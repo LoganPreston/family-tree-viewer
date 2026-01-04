@@ -18,7 +18,6 @@ import * as d3 from 'd3';
 import { useFamilyTreeStore } from '../stores/family-tree-store';
 import { buildTreeData } from '../utils/tree-layout';
 import type { TreeNode } from '../utils/tree-layout';
-import type { Person } from '../types/family-tree';
 import PersonEditor from './PersonEditor.vue';
 
 const store = useFamilyTreeStore();
@@ -62,28 +61,13 @@ function closeEditor() {
 let svg: d3.Selection<SVGElement, unknown, null, undefined> | null = null;
 let g: d3.Selection<SVGGElement, unknown, null, undefined> | null = null;
 let zoom: d3.ZoomBehavior<SVGElement, unknown> | null = null;
-let treeLayout: d3.TreeLayout<d3.HierarchyNode<TreeNode>> | null = null;
+let treeLayout: d3.TreeLayout<TreeNode> | null = null;
 let root: d3.HierarchyPointNode<TreeNode> | null = null;
 
 const nodeWidth = 180;
 const nodeHeight = 100;
 const nodeSpacing = 20;
 const levelSpacing = 100; // Additional vertical spacing between tree levels
-
-// Helper function to check if two people share the same parent(s)
-function haveSameParents(person1: Person, person2: Person): boolean {
-  const parents1 = person1.relationships
-    .filter(r => r.type === 'parent')
-    .map(r => r.personId)
-    .sort();
-  const parents2 = person2.relationships
-    .filter(r => r.type === 'parent')
-    .map(r => r.personId)
-    .sort();
-  
-  if (parents1.length !== parents2.length) return false;
-  return parents1.every((id, i) => id === parents2[i]);
-}
 
 // Helper function to parse birthdate and extract year
 function extractYearFromBirthdate(birthDate?: string): number | null {
@@ -112,29 +96,6 @@ function extractYearFromBirthdate(birthDate?: string): number | null {
   }
   
   return null;
-}
-
-// Calculate generation value (0-1 scale) based on birthdate
-// Returns 0 for oldest, 1 for youngest
-function calculateGenerationValue(birthDate?: string, allYears: number[] = []): number {
-  const year = extractYearFromBirthdate(birthDate);
-  
-  if (year === null || allYears.length === 0) {
-    return 0.5; // Default to middle if no birthdate or no data
-  }
-  
-  // Normalize year to 0-1 scale
-  const minYear = Math.min(...allYears);
-  const maxYear = Math.max(...allYears);
-  
-  if (minYear === maxYear) {
-    return 0.5; // All same year, default to middle
-  }
-  
-  // Older years (smaller numbers) -> lower values (closer to 0)
-  // Younger years (larger numbers) -> higher values (closer to 1)
-  const normalized = (year - minYear) / (maxYear - minYear);
-  return normalized;
 }
 
 function initializeTree() {
@@ -268,8 +229,10 @@ function initializeTree() {
     actualTreeData = treeData;
   }
   
-  root = d3.hierarchy(actualTreeData, (d: TreeNode) => d.children);
-  treeLayout(root);
+  const hierarchyRoot = d3.hierarchy(actualTreeData, (d: TreeNode) => d.children);
+  if (!treeLayout) return;
+  root = treeLayout(hierarchyRoot);
+  if (!root) return;
   
   // Validate and fix any NaN positions
   root.each((d) => {
@@ -402,15 +365,17 @@ function initializeTree() {
   
   // Draw links
   console.log('initializeTree: drawing links');
-  drawLinks(root);
-  
-  // Draw spouse connections (before nodes so nodes appear on top)
-  console.log('initializeTree: drawing spouse links');
-  drawSpouseLinks(root);
-  
-  // Draw nodes (after links so nodes appear on top)
-  console.log('initializeTree: drawing nodes');
-  drawNodes(root);
+  if (root) {
+    drawLinks(root);
+    
+    // Draw spouse connections (before nodes so nodes appear on top)
+    console.log('initializeTree: drawing spouse links');
+    drawSpouseLinks(root);
+    
+    // Draw nodes (after links so nodes appear on top)
+    console.log('initializeTree: drawing nodes');
+    drawNodes(root);
+  }
   
   console.log('initializeTree: complete');
 }
@@ -467,7 +432,10 @@ function drawLinks(rootNode: d3.HierarchyPointNode<TreeNode>) {
   }
   
   const linkElements = g.selectAll('.link')
-    .data(links, (d) => `${d.source.data.id}-${d.target.data.id}`);
+    .data(links, (d: unknown) => {
+      const link = d as { source: d3.HierarchyPointNode<TreeNode>; target: d3.HierarchyPointNode<TreeNode> };
+      return `${link.source.data.id}-${link.target.data.id}`;
+    });
   
   linkElements.exit().remove();
   
@@ -548,8 +516,9 @@ function drawSpouseLinks(rootNode: d3.HierarchyPointNode<TreeNode>) {
   
   // Draw spouse links
   const spouseLinkElements = g.selectAll('.spouse-link')
-    .data(spousePairs, (d) => {
-      const ids = [d.node1.data.id, d.node2.data.id].sort();
+    .data(spousePairs, (d: unknown) => {
+      const pair = d as { node1: d3.HierarchyPointNode<TreeNode>; node2: d3.HierarchyPointNode<TreeNode> };
+      const ids = [pair.node1.data.id, pair.node2.data.id].sort();
       return `spouse-${ids[0]}-${ids[1]}`;
     });
   
@@ -601,7 +570,10 @@ function drawNodes(rootNode: d3.HierarchyPointNode<TreeNode>) {
   });
   
   const nodeGroup = g.selectAll('.node-group')
-    .data(nodes, (d) => d.data.id);
+    .data(nodes, (d: unknown) => {
+      const node = d as d3.HierarchyPointNode<TreeNode>;
+      return node.data.id;
+    });
   
   nodeGroup.exit().remove();
   
@@ -611,7 +583,7 @@ function drawNodes(rootNode: d3.HierarchyPointNode<TreeNode>) {
     .style('cursor', 'pointer');
   
   // Draw node rectangle
-  const rectEnter = nodeGroupEnter.append('rect')
+  nodeGroupEnter.append('rect')
     .attr('class', 'node')
     .attr('width', nodeWidth)
     .attr('height', nodeHeight)
@@ -661,7 +633,7 @@ function drawNodes(rootNode: d3.HierarchyPointNode<TreeNode>) {
     });
   
   // Draw name
-  const nameEnter = nodeGroupEnter.append('text')
+  nodeGroupEnter.append('text')
     .attr('class', 'node-name')
     .attr('x', 0)
     .attr('y', -nodeHeight / 2 + 25)
@@ -674,7 +646,7 @@ function drawNodes(rootNode: d3.HierarchyPointNode<TreeNode>) {
     .text((d) => d.data.name);
   
   // Draw birth date (only for non-navigation nodes)
-  const birthEnter = nodeGroupEnter.append('text')
+  nodeGroupEnter.append('text')
     .attr('class', 'node-birth')
     .attr('x', 0)
     .attr('y', -nodeHeight / 2 + 45)
@@ -687,7 +659,7 @@ function drawNodes(rootNode: d3.HierarchyPointNode<TreeNode>) {
     .text((d) => d.data.isNavigationNode ? '' : (d.data.birthDate ? `b. ${d.data.birthDate}` : ''));
   
   // Draw death date (only for non-navigation nodes)
-  const deathEnter = nodeGroupEnter.append('text')
+  nodeGroupEnter.append('text')
     .attr('class', 'node-death')
     .attr('x', 0)
     .attr('y', -nodeHeight / 2 + 60)
