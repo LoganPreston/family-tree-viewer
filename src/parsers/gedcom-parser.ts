@@ -333,6 +333,14 @@ function parseIndividual(record: GedcomRecord): Person | null {
     if (childRecord.lines.some(l => l.tag === 'SURN')) {
       surname = childRecord.lines.find(l => l.tag === 'SURN')?.value || '';
     }
+    // Also check for SEX/GENDER in child records
+    if (childRecord.lines.some(l => l.tag === 'SEX' || l.tag === 'GENDER')) {
+      const sexLine = childRecord.lines.find(l => l.tag === 'SEX' || l.tag === 'GENDER');
+      if (sexLine) {
+        const genderValue = (sexLine.value || '').toUpperCase();
+        person.gender = (genderValue === 'M' ? 'M' : genderValue === 'F' ? 'F' : 'U') as Gender;
+      }
+    }
   }
   
   // Also check direct lines for GIVN and SURN
@@ -389,37 +397,82 @@ function parseIndividual(record: GedcomRecord): Person | null {
   }
   
   // Parse RELIGION tag
-  for (const line of record.lines) {
+  // Format: 1 RELIGION\n2 PLACE <religion>
+  // Check if RELIGION appears as a direct line, then look for PLACE that follows
+  for (let i = 0; i < record.lines.length; i++) {
+    const line = record.lines[i];
     if (line.tag === 'RELIGION') {
-      person.religion = line.value;
+      // Look for PLACE line that follows (at level 2)
+      for (let j = i + 1; j < record.lines.length; j++) {
+        const nextLine = record.lines[j];
+        if (nextLine.level <= line.level) {
+          // We've moved to the next tag at same or higher level, stop searching
+          break;
+        }
+        if (nextLine.tag === 'PLACE' && nextLine.level === line.level + 1) {
+          person.religion = nextLine.value || '';
+          break;
+        }
+      }
+      // If no PLACE found and RELIGION has a value, use it
+      if (!person.religion && line.value) {
+        person.religion = line.value;
+      }
     }
   }
   // Also check child records for RELIGION
   for (const childRecord of record.children) {
-    for (const line of childRecord.lines) {
-      if (line.tag === 'RELIGION') {
-        person.religion = line.value;
+    if (childRecord.lines.some(l => l.tag === 'RELIGION')) {
+      // Check for PLACE in child record's lines
+      const placeLine = childRecord.lines.find(l => l.tag === 'PLACE');
+      if (placeLine?.value) {
+        person.religion = placeLine.value;
+      } else {
+        const religionLine = childRecord.lines.find(l => l.tag === 'RELIGION');
+        if (religionLine?.value && !person.religion) {
+          person.religion = religionLine.value;
+        }
       }
     }
   }
   
   // Parse OCCUPATION tag
-  for (const line of record.lines) {
+  // Format: 1 OCCUPATION\n2 PLACE <occupation>
+  // Check if OCCUPATION appears as a direct line, then look for PLACE that follows
+  for (let i = 0; i < record.lines.length; i++) {
+    const line = record.lines[i];
     if (line.tag === 'OCCUPATION') {
-      // OCCUPATION value is the occupation itself
-      person.occupation = line.value;
+      // Look for PLACE line that follows (at level 2)
+      for (let j = i + 1; j < record.lines.length; j++) {
+        const nextLine = record.lines[j];
+        if (nextLine.level <= line.level) {
+          // We've moved to the next tag at same or higher level, stop searching
+          break;
+        }
+        if (nextLine.tag === 'PLACE' && nextLine.level === line.level + 1) {
+          person.occupation = nextLine.value || '';
+          break;
+        }
+      }
+      // If no PLACE found and OCCUPATION has a value, use it
+      if (!person.occupation && line.value) {
+        person.occupation = line.value;
+      }
     }
   }
-  // Also check child records for OCCUPATION (may have nested PLACE)
+  // Also check child records for OCCUPATION
   for (const childRecord of record.children) {
     if (childRecord.lines.some(l => l.tag === 'OCCUPATION')) {
-      const occupationLine = childRecord.lines.find(l => l.tag === 'OCCUPATION');
-      if (occupationLine?.value) {
-        person.occupation = occupationLine.value;
+      // Check for PLACE in child record's lines
+      const placeLine = childRecord.lines.find(l => l.tag === 'PLACE');
+      if (placeLine?.value) {
+        person.occupation = placeLine.value;
+      } else {
+        const occupationLine = childRecord.lines.find(l => l.tag === 'OCCUPATION');
+        if (occupationLine?.value && !person.occupation) {
+          person.occupation = occupationLine.value;
+        }
       }
-      // Check for PLACE sub-tag (occupation location)
-      // Note: We're storing just the occupation, not the place, as per Person interface
-      // If needed, we could add occupationPlace field later
     }
   }
   
