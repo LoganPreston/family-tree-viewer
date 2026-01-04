@@ -231,10 +231,10 @@ function initializeTree() {
             // More separation for larger age differences
             const ageDiff = Math.abs(aYear - bYear);
             const normalizedDiff = ageDiff / (maxYear - minYear);
-            return 0.5 + normalizedDiff * 0.5; // 0.5 to 1.0
+            return 1.5 + normalizedDiff * 1.0; // 1.5 to 2.5
           }
         }
-        return 1;
+        return 1.5; // Default separation for siblings
       }
       // Different parents
       return 1.5;
