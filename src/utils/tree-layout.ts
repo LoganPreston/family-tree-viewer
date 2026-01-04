@@ -12,6 +12,7 @@ export interface TreeNode {
   parent?: TreeNode | null;
   isNavigationNode?: boolean; // True for parent navigation node
   generation?: number; // Generation level (0 = root)
+  isInvisibleLink?: boolean; // True if link from parent to this node should be invisible (e.g., spouse links)
 }
 
 export function buildTreeData(
@@ -216,30 +217,25 @@ export function buildTreeData(
             }
           }
         } else {
-          // Spouse has no parent in the data
-          // Don't force them to share partner's parent - maintain their own structure
-          // For positioning, we'll handle this by ensuring they're at the same generation level
-          // and using the separation function to position them next to each other
-          // If partner has a parent, we still don't add spouse to that parent
-          // Instead, we'll rely on the tree layout's separation function to position them
-          // For tree structure purposes, we may need to add them as siblings, but only if
-          // it doesn't violate their actual parent relationships
-          // Actually, for the tree layout to work, nodes need to be in a hierarchy
-          // So if spouse has no parent and partner has a parent, we need to handle this specially
-          // One approach: create a temporary grouping node, but that's complex
-          // Another: add spouse to root level if partner is at root level
-          // For now, if partner has no parent (root level), we'll handle at root level
-          // If partner has a parent, we'll add spouse as sibling only for tree structure,
-          // but this is a limitation - they won't be positioned next to each other if they're not siblings
+          // Spouse has no parent in the data - need to add them to tree structure
+          // If their partner has a parent, add spouse as sibling (child of partner's parent)
+          // This ensures they're in the tree and can be positioned next to each other
+          // Mark the link as invisible since the spouse isn't actually a child of this parent
           const nodeParent = node.parent;
-          if (!nodeParent || nodeParent.isNavigationNode) {
-            // Partner is at root level - spouse should also be at root level
-            // We'll handle this by ensuring they're both children of the root
-            // This will be handled when we process the root node
+          if (nodeParent && !nodeParent.isNavigationNode) {
+            // Partner has a parent - add spouse as sibling
+            spouseNode.parent = nodeParent;
+            spouseNode.isInvisibleLink = true; // Mark link as invisible
+            if (!nodeParent.children) {
+              nodeParent.children = [];
+            }
+            // Check if already added
+            if (!nodeParent.children.some((child: TreeNode) => child.id === spouseId)) {
+              nodeParent.children.push(spouseNode);
+            }
           }
-          // If partner has a parent, we can't easily position spouse next to them
-          // without making them siblings, which violates the requirement
-          // For now, we'll leave spouse without a parent - they'll appear at root level
+          // If partner also has no parent (both at root level), this will be handled
+          // by the wrapper root logic later
         }
       } else {
         // Spouse already in tree - ensure they're positioned next to each other
@@ -288,6 +284,113 @@ export function buildTreeData(
   
   // Position all spouses
   positionSpouses(rootNode);
+  
+  // Sort children arrays to group spouses together
+  function sortChildrenToGroupSpouses(node: TreeNode): void {
+    if (!node.children || node.children.length === 0) return;
+    
+    // Build a map of all spouse relationships within this children array
+    // This handles multiple marriages - a person can have multiple spouses
+    const spouseGroups = new Map<string, Set<string>>(); // personId -> Set of spouseIds
+    
+    for (const child of node.children) {
+      const childPerson = personMap.get(child.id);
+      if (!childPerson) continue;
+      
+      // Initialize spouse group for this person
+      if (!spouseGroups.has(child.id)) {
+        spouseGroups.set(child.id, new Set<string>());
+      }
+      
+      // Find all spouses in this children array
+      for (const rel of childPerson.relationships) {
+        if (rel.type === 'spouse') {
+          const spouseInChildren = node.children.find(c => c.id === rel.personId);
+          if (spouseInChildren) {
+            // Add to this person's spouse group
+            spouseGroups.get(child.id)!.add(rel.personId);
+            
+            // Also add to spouse's group (reciprocal)
+            if (!spouseGroups.has(rel.personId)) {
+              spouseGroups.set(rel.personId, new Set<string>());
+            }
+            spouseGroups.get(rel.personId)!.add(child.id);
+          }
+        }
+      }
+    }
+    
+    // Build connected components of spouses (groups of people who are all spouses of each other)
+    const visited = new Set<string>();
+    const spouseClusters: Set<string>[] = [];
+    
+    for (const child of node.children) {
+      if (visited.has(child.id)) continue;
+      
+      const spouseSet = spouseGroups.get(child.id);
+      if (spouseSet && spouseSet.size > 0) {
+        // This person has spouses - build a cluster
+        const cluster = new Set<string>([child.id]);
+        visited.add(child.id);
+        
+        // Add all spouses and their spouses (transitive closure)
+        const toProcess = Array.from(spouseSet);
+        while (toProcess.length > 0) {
+          const spouseId = toProcess.pop()!;
+          if (visited.has(spouseId)) continue;
+          
+          cluster.add(spouseId);
+          visited.add(spouseId);
+          
+          // Add this spouse's spouses to the cluster
+          const spouseSpouses = spouseGroups.get(spouseId);
+          if (spouseSpouses) {
+            for (const spouseSpouseId of spouseSpouses) {
+              if (!visited.has(spouseSpouseId) && !cluster.has(spouseSpouseId)) {
+                toProcess.push(spouseSpouseId);
+              }
+            }
+          }
+        }
+        
+        spouseClusters.push(cluster);
+      }
+    }
+    
+    // Sort children so all spouses in a cluster are grouped together
+    const sorted: TreeNode[] = [];
+    const used = new Set<string>();
+    
+    // First, add all spouse clusters
+    for (const cluster of spouseClusters) {
+      const clusterArray = Array.from(cluster)
+        .map(id => node.children!.find(c => c.id === id))
+        .filter((c): c is TreeNode => c !== undefined);
+      
+      // Sort cluster by ID for consistent ordering
+      clusterArray.sort((a, b) => a.id.localeCompare(b.id));
+      
+      for (const child of clusterArray) {
+        sorted.push(child);
+        used.add(child.id);
+      }
+    }
+    
+    // Then add any remaining children (those without spouses in this array)
+    for (const child of node.children) {
+      if (!used.has(child.id)) {
+        sorted.push(child);
+      }
+    }
+    
+    node.children = sorted;
+    
+    // Recursively sort children
+    node.children.forEach(child => sortChildrenToGroupSpouses(child));
+  }
+  
+  // Sort all children arrays to group spouses
+  sortChildrenToGroupSpouses(rootNode);
   
   // Handle root-level spouses (spouses that don't have parents)
   // If root has a spouse at root level, ensure they're positioned as siblings

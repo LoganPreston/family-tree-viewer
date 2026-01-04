@@ -379,6 +379,11 @@ function drawLinks(rootNode: d3.HierarchyPointNode<TreeNode>) {
       continue;
     }
     
+    // Skip invisible links (e.g., links from parent to child's spouse)
+    if (link.target.data.isInvisibleLink) {
+      continue;
+    }
+    
     // Regular link
     links.push({ source: link.source, target: link.target });
   }
@@ -419,6 +424,7 @@ function drawSpouseLinks(rootNode: d3.HierarchyPointNode<TreeNode>) {
   const spousePairs: Array<{ node1: d3.HierarchyPointNode<TreeNode>, node2: d3.HierarchyPointNode<TreeNode> }> = [];
   
   // Build a map of hierarchy nodes by person ID
+  // Include all nodes except navigation nodes (spouses should be included)
   const nodeMap = new Map<string, d3.HierarchyPointNode<TreeNode>>();
   rootNode.each((d) => {
     if (!d.data.isNavigationNode) {
