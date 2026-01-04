@@ -1,0 +1,30 @@
+export type Gender = 'M' | 'F' | 'U';
+
+export type RelationshipType = 'parent' | 'child' | 'spouse';
+
+export interface Relationship {
+  type: RelationshipType;
+  personId: string;
+}
+
+export interface Event {
+  type: string;
+  date?: string;
+  place?: string;
+}
+
+export interface Person {
+  id: string;
+  name: string;
+  birthDate?: string;
+  deathDate?: string;
+  gender?: Gender;
+  relationships: Relationship[];
+  events?: Event[];
+}
+
+export interface FamilyTree {
+  rootPersonId?: string;
+  persons: Person[];
+}
+
