@@ -10,7 +10,7 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
   
   const selectedPersonId = ref<string | null>(null);
   const currentRootPersonId = ref<string | undefined>(undefined);
-  const maxGenerations = ref<number>(5);
+  const maxGenerations = ref<number>(4);
   const zoom = ref(1);
   const panX = ref(0);
   const panY = ref(0);

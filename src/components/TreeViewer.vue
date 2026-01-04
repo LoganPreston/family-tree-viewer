@@ -216,7 +216,8 @@ function initializeTree() {
           );
           
           if (areSpouses) {
-            // Spouses should be close together but with some space
+            // Spouses should be positioned next to each other
+            // Use smaller separation to keep them close
             return 1.5;
           }
         }
