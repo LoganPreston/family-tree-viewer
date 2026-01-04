@@ -29,6 +29,26 @@ const editingPersonId = ref<string | null>(null);
 
 const hasData = computed(() => store.familyTree.persons.length > 0);
 
+// Helper function to check if a link is part of the connection path
+function isLinkInPath(sourceId: string, targetId: string): boolean {
+  if (!store.connectionPath || store.connectionPath.length < 2) return false;
+  
+  for (let i = 0; i < store.connectionPath.length - 1; i++) {
+    const pathSource = store.connectionPath[i];
+    const pathTarget = store.connectionPath[i + 1];
+    if ((pathSource === sourceId && pathTarget === targetId) ||
+        (pathSource === targetId && pathTarget === sourceId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Helper function to check if a node is part of the connection path
+function isNodeInPath(nodeId: string): boolean {
+  return store.connectionPath ? store.connectionPath.includes(nodeId) : false;
+}
+
 function openEditor(personId: string) {
   editingPersonId.value = personId;
   isEditorOpen.value = true;
@@ -472,6 +492,16 @@ function drawLinks(rootNode: d3.HierarchyPointNode<TreeNode>) {
       }
       // Draw from bottom of parent to top of child
       return `M${sx},${sy + nodeHeight / 2}L${tx},${ty - nodeHeight / 2}`;
+    })
+    .attr('stroke', (d) => {
+      const sourceId = d.source.data.id;
+      const targetId = d.target.data.id;
+      return isLinkInPath(sourceId, targetId) ? '#ff9800' : '#ccc';
+    })
+    .attr('stroke-width', (d) => {
+      const sourceId = d.source.data.id;
+      const targetId = d.target.data.id;
+      return isLinkInPath(sourceId, targetId) ? 4 : 2;
     });
 }
 
@@ -548,6 +578,16 @@ function drawSpouseLinks(rootNode: d3.HierarchyPointNode<TreeNode>) {
       }
       // Draw horizontal line between spouses at middle height
       return `M${x1},${y1}L${x2},${y2}`;
+    })
+    .attr('stroke', (d) => {
+      const node1Id = d.node1.data.id;
+      const node2Id = d.node2.data.id;
+      return isLinkInPath(node1Id, node2Id) ? '#ff9800' : '#999';
+    })
+    .attr('stroke-width', (d) => {
+      const node1Id = d.node1.data.id;
+      const node2Id = d.node2.data.id;
+      return isLinkInPath(node1Id, node2Id) ? 4 : 2;
     });
 }
 
@@ -583,6 +623,14 @@ function drawNodes(rootNode: d3.HierarchyPointNode<TreeNode>) {
     .select('.node')
     .attr('fill', (d) => {
       if (d.data.isNavigationNode) return '#fff3cd'; // Yellow for navigation node
+      const inPath = isNodeInPath(d.data.id);
+      if (inPath) {
+        // Slightly lighter background for path nodes
+        const gender = d.data.gender;
+        if (gender === 'M') return '#cfe2ff';
+        if (gender === 'F') return '#f8d7e6';
+        return '#fff4e6';
+      }
       const gender = d.data.gender;
       if (gender === 'M') return '#e3f2fd';
       if (gender === 'F') return '#fce4ec';
@@ -590,10 +638,14 @@ function drawNodes(rootNode: d3.HierarchyPointNode<TreeNode>) {
     })
     .attr('stroke', (d) => {
       if (d.data.isNavigationNode) return '#ff9800';
+      const inPath = isNodeInPath(d.data.id);
+      if (inPath) return '#ff9800'; // Orange for path nodes
       return d.data.id === store.selectedPersonId ? '#2196f3' : '#999';
     })
     .attr('stroke-width', (d) => {
       if (d.data.isNavigationNode) return 2;
+      const inPath = isNodeInPath(d.data.id);
+      if (inPath) return 4; // Thicker border for path nodes
       return d.data.id === store.selectedPersonId ? 3 : 1;
     })
     .on('click', (event: MouseEvent, d) => {
@@ -699,6 +751,17 @@ watch(() => [store.familyTree, store.currentRootPersonId, store.maxGenerations],
     console.log('watch: missing data or root');
   }
 }, { deep: true, immediate: false });
+
+// Watch connectionPath to redraw highlighting when it changes
+watch(() => store.connectionPath, async () => {
+  if (hasData.value && store.currentRootPersonId && root && g) {
+    await nextTick();
+    // Redraw links and nodes to update highlighting
+    drawLinks(root);
+    drawSpouseLinks(root);
+    drawNodes(root);
+  }
+});
 
 watch(hasData, async (newValue) => {
   console.log('watch hasData:', newValue);

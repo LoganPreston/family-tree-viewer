@@ -34,6 +34,20 @@
         </button>
         <button 
           v-if="hasData" 
+          @click="showConnectionModal = true" 
+          class="connection-btn"
+        >
+          Find Connection
+        </button>
+        <button 
+          v-if="hasData && store.connectionPath" 
+          @click="clearConnectionPath" 
+          class="clear-highlight-btn"
+        >
+          Clear Highlight
+        </button>
+        <button 
+          v-if="hasData" 
           @click="showAddPerson = true" 
           class="add-person-btn"
         >
@@ -107,6 +121,106 @@
         </div>
       </div>
     </div>
+    
+    <div v-if="showConnectionModal" class="connection-modal-overlay" @click.self="handleConnectionClose">
+      <div class="connection-modal">
+        <div class="connection-modal-header">
+          <h2>Find Connection Between People</h2>
+          <button class="close-btn" @click="handleConnectionClose">&times;</button>
+        </div>
+        <div class="connection-modal-content">
+          <div class="connection-selectors">
+            <div class="person-selector">
+              <label>Person 1:</label>
+              <input
+                v-model="connectionPerson1Query"
+                type="text"
+                placeholder="Type a name to search..."
+                class="connection-search-input"
+                @input="filterConnectionPerson1"
+              />
+              <div v-if="connectionPerson1Query && connectionPerson1Results.length > 0" class="connection-results-dropdown">
+                <div
+                  v-for="person in connectionPerson1Results"
+                  :key="person.id"
+                  class="connection-result-item"
+                  @click="selectConnectionPerson1(person.id)"
+                >
+                  <div class="result-name">{{ person.name }}</div>
+                  <div v-if="person.birthDate" class="result-dates">b. {{ person.birthDate }}</div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="person-selector">
+              <label>Person 2:</label>
+              <input
+                v-model="connectionPerson2Query"
+                type="text"
+                placeholder="Type a name to search..."
+                class="connection-search-input"
+                @input="filterConnectionPerson2"
+              />
+              <div v-if="connectionPerson2Query && connectionPerson2Results.length > 0" class="connection-results-dropdown">
+              <div
+                v-for="person in connectionPerson2Results"
+                :key="person.id"
+                class="connection-result-item"
+                @click="selectConnectionPerson2(person.id)"
+              >
+                <div class="result-name">{{ person.name }}</div>
+                <div v-if="person.birthDate" class="result-dates">b. {{ person.birthDate }}</div>
+              </div>
+              </div>
+            </div>
+          </div>
+          
+          <div v-if="connectionPerson1Id && connectionPerson2Id" class="connection-selected">
+            <div class="selected-person">
+              <strong>Person 1:</strong> {{ getPersonName(connectionPerson1Id) }}
+            </div>
+            <div class="selected-person">
+              <strong>Person 2:</strong> {{ getPersonName(connectionPerson2Id) }}
+            </div>
+          </div>
+          
+          <div class="connection-actions">
+            <button 
+              @click="findConnectionPath"
+              :disabled="!connectionPerson1Id || !connectionPerson2Id"
+              class="find-path-btn"
+            >
+              Find Path
+            </button>
+            <button 
+              @click="clearConnectionPath"
+              :disabled="!store.connectionPath"
+              class="clear-path-btn"
+            >
+              Clear Highlight
+            </button>
+          </div>
+          
+          <div v-if="connectionPathResult" class="connection-path-result">
+            <h3>Path Found:</h3>
+            <div class="path-display">
+              <span
+                v-for="(personId, index) in connectionPathResult"
+                :key="personId"
+                class="path-person"
+              >
+                {{ getPersonName(personId) }}
+                <span v-if="index < connectionPathResult.length - 1" class="path-arrow">→</span>
+              </span>
+            </div>
+          </div>
+          
+          <div v-if="connectionPathResult === null && hasSearched" class="connection-error">
+            No connection found between these two people.
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -117,12 +231,20 @@ import FileUpload from './components/FileUpload.vue';
 import TreeViewer from './components/TreeViewer.vue';
 import PersonEditor from './components/PersonEditor.vue';
 import { downloadJson } from './utils/json-exporter';
+import { findShortestPath } from './utils/path-finder';
 
 const store = useFamilyTreeStore();
 const showAddPerson = ref(false);
 const showUpload = ref(false);
 const showSearch = ref(false);
 const searchQuery = ref('');
+const showConnectionModal = ref(false);
+const connectionPerson1Query = ref('');
+const connectionPerson2Query = ref('');
+const connectionPerson1Id = ref<string | null>(null);
+const connectionPerson2Id = ref<string | null>(null);
+const connectionPathResult = ref<string[] | null | undefined>(undefined);
+const hasSearched = ref(false);
 
 const hasData = computed(() => store.familyTree.persons.length > 0);
 
@@ -161,6 +283,105 @@ function handleSearchSelect(personId: string) {
 function handleSearchClose() {
   showSearch.value = false;
   searchQuery.value = '';
+}
+
+const connectionPerson1Results = computed(() => {
+  if (!connectionPerson1Query.value.trim()) {
+    return [];
+  }
+  const query = connectionPerson1Query.value.toLowerCase().trim();
+  const results = store.familyTree.persons
+    .filter(person => person.name.toLowerCase().includes(query))
+    .slice(0, 10);
+  // Don't show results if the query exactly matches the selected person's name
+  if (connectionPerson1Id.value) {
+    const selectedPerson = store.familyTree.persons.find(p => p.id === connectionPerson1Id.value);
+    if (selectedPerson && connectionPerson1Query.value.trim() === selectedPerson.name) {
+      return [];
+    }
+  }
+  return results;
+});
+
+const connectionPerson2Results = computed(() => {
+  if (!connectionPerson2Query.value.trim()) {
+    return [];
+  }
+  const query = connectionPerson2Query.value.toLowerCase().trim();
+  const results = store.familyTree.persons
+    .filter(person => person.name.toLowerCase().includes(query))
+    .slice(0, 10);
+  // Don't show results if the query exactly matches the selected person's name
+  if (connectionPerson2Id.value) {
+    const selectedPerson = store.familyTree.persons.find(p => p.id === connectionPerson2Id.value);
+    if (selectedPerson && connectionPerson2Query.value.trim() === selectedPerson.name) {
+      return [];
+    }
+  }
+  return results;
+});
+
+function filterConnectionPerson1() {
+  connectionPerson1Id.value = null;
+}
+
+function filterConnectionPerson2() {
+  connectionPerson2Id.value = null;
+}
+
+function selectConnectionPerson1(personId: string) {
+  connectionPerson1Id.value = personId;
+  const person = store.familyTree.persons.find(p => p.id === personId);
+  connectionPerson1Query.value = person ? person.name : '';
+}
+
+function selectConnectionPerson2(personId: string) {
+  connectionPerson2Id.value = personId;
+  const person = store.familyTree.persons.find(p => p.id === personId);
+  connectionPerson2Query.value = person ? person.name : '';
+}
+
+function getPersonName(personId: string): string {
+  const person = store.familyTree.persons.find(p => p.id === personId);
+  return person ? person.name : 'Unknown';
+}
+
+function findConnectionPath() {
+  if (!connectionPerson1Id.value || !connectionPerson2Id.value) return;
+  
+  if (connectionPerson1Id.value === connectionPerson2Id.value) {
+    connectionPathResult.value = null;
+    hasSearched.value = true;
+    store.setConnectionPath(null);
+    return;
+  }
+  
+  const path = findShortestPath(
+    store.familyTree,
+    connectionPerson1Id.value,
+    connectionPerson2Id.value
+  );
+  
+  connectionPathResult.value = path;
+  hasSearched.value = true;
+  store.setConnectionPath(path);
+}
+
+function clearConnectionPath() {
+  store.clearConnectionPath();
+  connectionPathResult.value = undefined;
+  hasSearched.value = false;
+}
+
+function handleConnectionClose() {
+  showConnectionModal.value = false;
+  connectionPerson1Query.value = '';
+  connectionPerson2Query.value = '';
+  connectionPerson1Id.value = null;
+  connectionPerson2Id.value = null;
+  connectionPathResult.value = undefined;
+  hasSearched.value = false;
+  // Don't clear the path - leave highlighting in place
 }
 </script>
 
@@ -207,7 +428,9 @@ body {
 .add-person-btn,
 .back-btn,
 .upload-btn,
-.search-btn {
+.search-btn,
+.connection-btn,
+.clear-highlight-btn {
   padding: 8px 16px;
   border: none;
   border-radius: 4px;
@@ -259,6 +482,24 @@ body {
 
 .search-btn:hover {
   background: #7b1fa2;
+}
+
+.connection-btn {
+  background: #00bcd4;
+  color: white;
+}
+
+.connection-btn:hover {
+  background: #0097a7;
+}
+
+.clear-highlight-btn {
+  background: #ff5722;
+  color: white;
+}
+
+.clear-highlight-btn:hover {
+  background: #e64a19;
 }
 
 .app-main {
@@ -453,6 +694,238 @@ body {
 .result-dates {
   font-size: 12px;
   color: #666;
+}
+
+.connection-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.connection-modal {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 700px;
+  width: 90%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.connection-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.connection-modal-header h2 {
+  margin: 0;
+  color: #333;
+}
+
+.connection-modal-header .close-btn {
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.connection-modal-header .close-btn:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.connection-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.connection-selectors {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.person-selector {
+  position: relative;
+}
+
+.person-selector label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #333;
+}
+
+.connection-search-input {
+  width: 100%;
+  padding: 10px;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.connection-search-input:focus {
+  outline: none;
+  border-color: #00bcd4;
+}
+
+.connection-results-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 1001;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-top: 4px;
+}
+
+.connection-result-item {
+  padding: 10px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+}
+
+.connection-result-item:hover {
+  background-color: #f5f5f5;
+}
+
+.connection-result-item:last-child {
+  border-bottom: none;
+}
+
+.connection-result-item .result-name {
+  font-weight: 500;
+  color: #333;
+}
+
+.connection-result-item .result-dates {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+}
+
+.connection-selected {
+  padding: 12px;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.selected-person {
+  color: #333;
+}
+
+.connection-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.find-path-btn,
+.clear-path-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.find-path-btn {
+  background: #00bcd4;
+  color: white;
+}
+
+.find-path-btn:hover:not(:disabled) {
+  background: #0097a7;
+}
+
+.find-path-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.clear-path-btn {
+  background: #757575;
+  color: white;
+}
+
+.clear-path-btn:hover:not(:disabled) {
+  background: #616161;
+}
+
+.clear-path-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.connection-path-result {
+  padding: 16px;
+  background-color: #e8f5e9;
+  border-radius: 4px;
+  border: 1px solid #4caf50;
+}
+
+.connection-path-result h3 {
+  margin: 0 0 12px 0;
+  color: #2e7d32;
+  font-size: 16px;
+}
+
+.path-display {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.path-person {
+  font-weight: 500;
+  color: #333;
+}
+
+.path-arrow {
+  color: #4caf50;
+  font-weight: bold;
+  margin: 0 4px;
+}
+
+.connection-error {
+  padding: 12px;
+  background-color: #ffebee;
+  border-radius: 4px;
+  border: 1px solid #ef5350;
+  color: #c62828;
+  text-align: center;
 }
 </style>
 

@@ -15,6 +15,7 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
   const panX = ref(0);
   const panY = ref(0);
   const rootHistory = ref<string[]>([]); // Stack of previous root person IDs (max 100)
+  const connectionPath = ref<string[] | null>(null); // Path between two people for highlighting
   
   const selectedPerson = computed(() => {
     if (!selectedPersonId.value) return null;
@@ -206,6 +207,14 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
     panY.value = 0;
   }
   
+  function setConnectionPath(path: string[] | null) {
+    connectionPath.value = path;
+  }
+  
+  function clearConnectionPath() {
+    connectionPath.value = null;
+  }
+  
   return {
     familyTree,
     selectedPersonId,
@@ -216,6 +225,7 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
     panX,
     panY,
     canGoBack,
+    connectionPath,
     loadFamilyTree,
     addPerson,
     updatePerson,
@@ -228,7 +238,9 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
     setZoom,
     setPan,
     resetView,
-    goBack
+    goBack,
+    setConnectionPath,
+    clearConnectionPath
   };
 });
 
