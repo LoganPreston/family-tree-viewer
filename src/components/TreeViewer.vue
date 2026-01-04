@@ -309,17 +309,75 @@ function initializeTree() {
   
   console.log('initializeTree: bounds', { x0, x1, y0, y1 });
   
-  // Center the tree
-  const dx = x1 - x0 + nodeWidth + nodeSpacing * 2;
-  const dy = y1 - y0 + nodeHeight + levelSpacing * 2;
+  // Find the root person node to center it on screen
+  let rootPersonNode: d3.HierarchyPointNode<TreeNode> | null = null;
+  root.each((d) => {
+    if (d.data.id === store.currentRootPersonId && !d.data.isNavigationNode) {
+      rootPersonNode = d;
+    }
+  });
   
-  const translateX = (width - dx) / 2 - x0;
-  const translateY = nodeSpacing;
+  // If root person is in a wrapper root, find it in the children
+  if (!rootPersonNode && root.data.id === '__wrapper_root__' && root.children) {
+    rootPersonNode = root.children.find((child: any) => 
+      child.data.id === store.currentRootPersonId
+    ) || null;
+  }
   
-  console.log('initializeTree: transform', { translateX, translateY, dx, dy });
+  // If still not found, use the root itself (if it's not a wrapper)
+  if (!rootPersonNode && root.data.id !== '__wrapper_root__') {
+    rootPersonNode = root;
+  }
   
-  if (g) {
-    g.attr('transform', `translate(${translateX},${translateY})`);
+  // Center the root person on screen
+  if (rootPersonNode && rootPersonNode.x !== undefined && rootPersonNode.y !== undefined &&
+      !isNaN(rootPersonNode.x) && !isNaN(rootPersonNode.y) && svg && zoom) {
+    const rootX = rootPersonNode.x;
+    const rootY = rootPersonNode.y;
+    
+    // Calculate center of viewport
+    const viewportCenterX = width / 2;
+    const viewportCenterY = height / 2;
+    
+    // Calculate transform to center root person
+    // We want: viewportCenterX = rootX * scale + translateX
+    // So: translateX = viewportCenterX - rootX * scale
+    const scale = store.zoom;
+    const translateX = viewportCenterX - rootX * scale;
+    const translateY = viewportCenterY - rootY * scale;
+    
+    console.log('initializeTree: centering root person', { 
+      rootX, rootY, viewportCenterX, viewportCenterY, translateX, translateY, scale 
+    });
+    
+    // Apply transform using D3 zoom
+    const centerTransform = d3.zoomIdentity
+      .translate(translateX, translateY)
+      .scale(scale);
+    svg.call(zoom.transform, centerTransform);
+    
+    // Update store with new pan values
+    store.setPan(translateX, translateY);
+  } else {
+    // Fallback: center the tree as before
+    const dx = x1 - x0 + nodeWidth + nodeSpacing * 2;
+    const dy = y1 - y0 + nodeHeight + levelSpacing * 2;
+    
+    const translateX = (width - dx) / 2 - x0;
+    const translateY = nodeSpacing;
+    
+    console.log('initializeTree: transform (fallback)', { translateX, translateY, dx, dy });
+    
+    // Apply transform using D3 zoom if available
+    if (svg && zoom) {
+      const fallbackTransform = d3.zoomIdentity
+        .translate(translateX, translateY)
+        .scale(store.zoom);
+      svg.call(zoom.transform, fallbackTransform);
+      store.setPan(translateX, translateY);
+    } else if (g) {
+      g.attr('transform', `translate(${translateX},${translateY})`);
+    }
   }
   
   // Draw links

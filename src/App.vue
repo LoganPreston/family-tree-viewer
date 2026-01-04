@@ -27,6 +27,13 @@
         </button>
         <button 
           v-if="hasData" 
+          @click="showSearch = true" 
+          class="search-btn"
+        >
+          Search
+        </button>
+        <button 
+          v-if="hasData" 
           @click="showAddPerson = true" 
           class="add-person-btn"
         >
@@ -64,6 +71,42 @@
         </div>
       </div>
     </div>
+    
+    <div v-if="showSearch" class="search-modal-overlay" @click.self="handleSearchClose">
+      <div class="search-modal">
+        <div class="search-modal-header">
+          <h2>Search for Person</h2>
+          <button class="close-btn" @click="handleSearchClose">&times;</button>
+        </div>
+        <div class="search-modal-content">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Type a name to search..."
+            class="search-input"
+            autofocus
+          />
+          <div class="search-results">
+            <div v-if="searchResults.length === 0 && searchQuery.trim()" class="no-results">
+              No results found
+            </div>
+            <div
+              v-for="person in searchResults"
+              :key="person.id"
+              class="search-result-item"
+              @click="handleSearchSelect(person.id)"
+            >
+              <div class="result-name">{{ person.name }}</div>
+              <div class="result-dates">
+                <span v-if="person.birthDate">b. {{ person.birthDate }}</span>
+                <span v-if="person.birthDate && person.deathDate"> • </span>
+                <span v-if="person.deathDate">d. {{ person.deathDate }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -78,8 +121,24 @@ import { downloadJson } from './utils/json-exporter';
 const store = useFamilyTreeStore();
 const showAddPerson = ref(false);
 const showUpload = ref(false);
+const showSearch = ref(false);
+const searchQuery = ref('');
 
 const hasData = computed(() => store.familyTree.persons.length > 0);
+
+const searchResults = computed(() => {
+  if (!searchQuery.value.trim()) {
+    return [];
+  }
+  
+  const query = searchQuery.value.toLowerCase().trim();
+  const results = store.familyTree.persons.filter(person =>
+    person.name.toLowerCase().includes(query)
+  );
+  
+  // Limit to 20 results
+  return results.slice(0, 20);
+});
 
 function handleFileLoaded() {
   // File loaded, tree will be displayed
@@ -92,6 +151,16 @@ function exportTree() {
 
 function handleAddPersonClose() {
   showAddPerson.value = false;
+}
+
+function handleSearchSelect(personId: string) {
+  store.setCurrentRoot(personId);
+  handleSearchClose();
+}
+
+function handleSearchClose() {
+  showSearch.value = false;
+  searchQuery.value = '';
 }
 </script>
 
@@ -137,7 +206,8 @@ body {
 .export-btn,
 .add-person-btn,
 .back-btn,
-.upload-btn {
+.upload-btn,
+.search-btn {
   padding: 8px 16px;
   border: none;
   border-radius: 4px;
@@ -180,6 +250,15 @@ body {
 
 .add-person-btn:hover {
   background: #1976d2;
+}
+
+.search-btn {
+  background: #9c27b0;
+  color: white;
+}
+
+.search-btn:hover {
+  background: #7b1fa2;
 }
 
 .app-main {
@@ -255,6 +334,125 @@ body {
 
 .upload-modal-content {
   padding: 0;
+}
+
+.search-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.search-modal {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.search-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.search-modal-header h2 {
+  margin: 0;
+  color: #333;
+}
+
+.search-modal-header .close-btn {
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.search-modal-header .close-btn:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.search-modal-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.search-input {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  font-size: 16px;
+  margin-bottom: 16px;
+  box-sizing: border-box;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #9c27b0;
+}
+
+.search-results {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 200px;
+  max-height: 60vh;
+}
+
+.no-results {
+  padding: 20px;
+  text-align: center;
+  color: #666;
+  font-style: italic;
+}
+
+.search-result-item {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.search-result-item:hover {
+  background-color: #f5f5f5;
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.result-name {
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.result-dates {
+  font-size: 12px;
+  color: #666;
 }
 </style>
 
