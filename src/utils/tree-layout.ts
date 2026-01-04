@@ -4,6 +4,7 @@ export interface TreeNode {
   id: string;
   name: string;
   birthDate?: string;
+  birthPlace?: string;
   deathDate?: string;
   gender?: string;
   x?: number;
@@ -52,6 +53,7 @@ export function buildTreeData(
         id: person.id,
         name: person.name,
         birthDate: person.birthDate,
+        birthPlace: person.birthPlace,
         deathDate: person.deathDate,
         gender: person.gender,
         generation,
@@ -195,6 +197,7 @@ export function buildTreeData(
           id: spousePerson.id,
           name: spousePerson.name,
           birthDate: spousePerson.birthDate,
+          birthPlace: spousePerson.birthPlace,
           deathDate: spousePerson.deathDate,
           gender: spousePerson.gender,
           generation: spouseGeneration,
@@ -506,6 +509,7 @@ export function buildTreeData(
           id: spousePerson.id,
           name: spousePerson.name,
           birthDate: spousePerson.birthDate,
+          birthPlace: spousePerson.birthPlace,
           deathDate: spousePerson.deathDate,
           gender: spousePerson.gender,
           generation: 0, // Same generation as root

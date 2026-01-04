@@ -79,6 +79,10 @@ function validatePerson(data: any): Person {
     throw new Error('Invalid person: "birthDate" must be a string or undefined');
   }
   
+  if (data.birthPlace !== undefined && typeof data.birthPlace !== 'string') {
+    throw new Error('Invalid person: "birthPlace" must be a string or undefined');
+  }
+  
   if (data.deathDate !== undefined && typeof data.deathDate !== 'string') {
     throw new Error('Invalid person: "deathDate" must be a string or undefined');
   }
@@ -150,6 +154,7 @@ function validatePerson(data: any): Person {
     id: data.id,
     name: data.name,
     birthDate: data.birthDate,
+    birthPlace: data.birthPlace,
     deathDate: data.deathDate,
     gender: data.gender,
     relationships,

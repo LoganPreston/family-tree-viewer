@@ -18,6 +18,11 @@
         </div>
         
         <div class="form-group">
+          <label>Birth Place</label>
+          <input v-model="formData.birthPlace" type="text" placeholder="e.g., New York" />
+        </div>
+        
+        <div class="form-group">
           <label>Death Date</label>
           <input v-model="formData.deathDate" type="text" placeholder="e.g., 2020" />
         </div>
@@ -105,6 +110,7 @@ const store = useFamilyTreeStore();
 const formData = ref({
   name: '',
   birthDate: '',
+  birthPlace: '',
   deathDate: '',
   gender: '' as Gender | '',
   religion: '',
@@ -133,6 +139,7 @@ watch(() => props.personId, (newId) => {
     formData.value = {
       name: person.value.name,
       birthDate: person.value.birthDate || '',
+      birthPlace: person.value.birthPlace || '',
       deathDate: person.value.deathDate || '',
       gender: person.value.gender || '',
       religion: person.value.religion || '',
@@ -143,6 +150,7 @@ watch(() => props.personId, (newId) => {
     formData.value = {
       name: '',
       birthDate: '',
+      birthPlace: '',
       deathDate: '',
       gender: '',
       religion: '',
@@ -187,6 +195,7 @@ function save() {
     store.updatePerson(props.personId, {
       name: formData.value.name,
       birthDate: formData.value.birthDate || undefined,
+      birthPlace: formData.value.birthPlace || undefined,
       deathDate: formData.value.deathDate || undefined,
       gender: (formData.value.gender || undefined) as Gender | undefined,
       religion: formData.value.religion || undefined,
@@ -197,6 +206,7 @@ function save() {
     store.addPerson({
       name: formData.value.name,
       birthDate: formData.value.birthDate || undefined,
+      birthPlace: formData.value.birthPlace || undefined,
       deathDate: formData.value.deathDate || undefined,
       gender: (formData.value.gender || undefined) as Gender | undefined,
       relationships: [],

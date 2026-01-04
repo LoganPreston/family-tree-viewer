@@ -656,13 +656,39 @@ function drawNodes(rootNode: d3.HierarchyPointNode<TreeNode>) {
   
   nodeGroupEnter.merge(nodeGroup as any)
     .select('.node-birth')
-    .text((d) => d.data.isNavigationNode ? '' : (d.data.birthDate ? `b. ${d.data.birthDate}` : ''));
+    .each(function(d: any) {
+      const textEl = d3.select(this);
+      // Remove all existing tspans
+      textEl.selectAll('tspan').remove();
+      
+      if (d.data.isNavigationNode) {
+        textEl.text('');
+        return;
+      }
+      
+      const parts: string[] = [];
+      if (d.data.birthDate) parts.push(`b. ${d.data.birthDate}`);
+      if (d.data.birthPlace) parts.push(d.data.birthPlace);
+      
+      if (parts.length === 0) {
+        textEl.text('');
+        return;
+      }
+      
+      // Create tspan for each line
+      parts.forEach((part, i) => {
+        textEl.append('tspan')
+          .attr('x', 0)
+          .attr('dy', i === 0 ? '0' : '1.2em')
+          .text(part);
+      });
+    });
   
   // Draw death date (only for non-navigation nodes)
   nodeGroupEnter.append('text')
     .attr('class', 'node-death')
     .attr('x', 0)
-    .attr('y', -nodeHeight / 2 + 60)
+    .attr('y', -nodeHeight / 2 + 65)
     .attr('text-anchor', 'middle')
     .attr('font-size', '11px')
     .attr('fill', '#666');

@@ -17,6 +17,7 @@ export interface Person {
   id: string;
   name: string;
   birthDate?: string;
+  birthPlace?: string;
   deathDate?: string;
   gender?: Gender;
   relationships: Relationship[];

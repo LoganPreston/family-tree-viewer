@@ -362,16 +362,23 @@ function parseIndividual(record: GedcomRecord): Person | null {
   // Parse dates - look for BIRT/BIRTH and DEAT/DEATH events
   for (const childRecord of record.children) {
     if (childRecord.lines.some(l => l.tag === 'BIRT' || l.tag === 'BIRTH')) {
-      // Birth event found, look for DATE in nested children
+      // Birth event found, look for DATE and PLACE in nested children
       for (const dateRecord of childRecord.children) {
         if (dateRecord.lines.some(l => l.tag === 'DATE')) {
           person.birthDate = dateRecord.lines.find(l => l.tag === 'DATE')?.value;
+        }
+        if (dateRecord.lines.some(l => l.tag === 'PLACE')) {
+          person.birthPlace = dateRecord.lines.find(l => l.tag === 'PLACE')?.value;
         }
       }
       // Also check direct lines in the BIRT/BIRTH record
       const birthDateLine = childRecord.lines.find(l => l.tag === 'DATE');
       if (birthDateLine?.value) {
         person.birthDate = birthDateLine.value;
+      }
+      const birthPlaceLine = childRecord.lines.find(l => l.tag === 'PLACE');
+      if (birthPlaceLine?.value) {
+        person.birthPlace = birthPlaceLine.value;
       }
     } else if (childRecord.lines.some(l => l.tag === 'DEAT' || l.tag === 'DEATH')) {
       // Death event found
