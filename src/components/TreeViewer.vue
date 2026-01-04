@@ -65,7 +65,7 @@ let treeLayout: d3.TreeLayout<TreeNode> | null = null;
 let root: d3.HierarchyPointNode<TreeNode> | null = null;
 
 const nodeWidth = 180;
-const nodeHeight = 100;
+const nodeHeight = 120;
 const nodeSpacing = 20;
 const levelSpacing = 100; // Additional vertical spacing between tree levels
 
@@ -96,6 +96,40 @@ function extractYearFromBirthdate(birthDate?: string): number | null {
   }
   
   return null;
+}
+
+// Helper function to wrap text within a maximum width
+function wrapText(text: string, maxWidth: number, fontSize: string = '11px', fontWeight: string = 'normal'): string[] {
+  // Use canvas to measure text width
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  if (!context) return [text];
+  
+  // Parse font size (assume px)
+  const size = parseFloat(fontSize) || 11;
+  context.font = `${fontWeight} ${size}px Arial, sans-serif`;
+  
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let currentLine = '';
+  
+  for (const word of words) {
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    const metrics = context.measureText(testLine);
+    
+    if (metrics.width > maxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+  
+  return lines.length > 0 ? lines : [text];
 }
 
 function initializeTree() {
@@ -643,13 +677,26 @@ function drawNodes(rootNode: d3.HierarchyPointNode<TreeNode>) {
   
   nodeGroupEnter.merge(nodeGroup as any)
     .select('.node-name')
-    .text((d) => d.data.name);
+    .each(function(d: any) {
+      const textEl = d3.select(this);
+      textEl.selectAll('tspan').remove();
+      
+      const wrappedLines = wrapText(d.data.name, nodeWidth - 20, '14px', 'bold');
+      wrappedLines.forEach((line, i) => {
+        textEl.append('tspan')
+          .attr('x', 0)
+          .attr('dy', i === 0 ? '0' : '1.2em')
+          .text(line);
+      });
+      
+      // Store name line count for positioning other elements
+      (d as any).nameLineCount = wrappedLines.length;
+    });
   
   // Draw birth date (only for non-navigation nodes)
   nodeGroupEnter.append('text')
     .attr('class', 'node-birth')
     .attr('x', 0)
-    .attr('y', -nodeHeight / 2 + 45)
     .attr('text-anchor', 'middle')
     .attr('font-size', '11px')
     .attr('fill', '#666');
@@ -668,12 +715,28 @@ function drawNodes(rootNode: d3.HierarchyPointNode<TreeNode>) {
       
       const parts: string[] = [];
       if (d.data.birthDate) parts.push(`b. ${d.data.birthDate}`);
-      if (d.data.birthPlace) parts.push(d.data.birthPlace);
+      if (d.data.birthPlace) {
+        // Wrap birth place text
+        const wrappedPlace = wrapText(d.data.birthPlace, nodeWidth - 20, '11px');
+        parts.push(...wrappedPlace);
+      }
       
       if (parts.length === 0) {
         textEl.text('');
         return;
       }
+      
+      // Calculate name height (14px font, 1.2em line spacing)
+      const nameLineCount = (d as any).nameLineCount || 1;
+      const nameHeight = nameLineCount === 1 ? 14 : 14 + (nameLineCount - 1) * 14 * 1.2;
+      
+      // Position birth date below name with spacing
+      const baseY = -nodeHeight / 2 + 25;
+      const birthY = baseY + nameHeight + 8; // 8px spacing after name
+      textEl.attr('y', birthY);
+      
+      // Store birth line count for positioning death date
+      (d as any).birthLineCount = parts.length;
       
       // Create tspan for each line
       parts.forEach((part, i) => {
@@ -688,10 +751,35 @@ function drawNodes(rootNode: d3.HierarchyPointNode<TreeNode>) {
   nodeGroupEnter.append('text')
     .attr('class', 'node-death')
     .attr('x', 0)
-    .attr('y', -nodeHeight / 2 + 65)
     .attr('text-anchor', 'middle')
     .attr('font-size', '11px')
     .attr('fill', '#666');
+  
+  nodeGroupEnter.merge(nodeGroup as any)
+    .select('.node-death')
+    .each(function(d: any) {
+      const textEl = d3.select(this);
+      
+      if (d.data.isNavigationNode || !d.data.deathDate) {
+        textEl.text('');
+        return;
+      }
+      
+      // Calculate name height
+      const nameLineCount = (d as any).nameLineCount || 1;
+      const nameHeight = nameLineCount === 1 ? 14 : 14 + (nameLineCount - 1) * 14 * 1.2;
+      
+      // Calculate birth info height
+      const birthLineCount = (d as any).birthLineCount || 0;
+      const birthHeight = birthLineCount === 0 ? 0 : (birthLineCount === 1 ? 11 : 11 + (birthLineCount - 1) * 11 * 1.2);
+      
+      // Position death date below birth info with spacing
+      const baseY = -nodeHeight / 2 + 25;
+      const deathY = baseY + nameHeight + 8 + birthHeight + 8; // 8px spacing after name, 8px after birth
+      textEl.attr('y', deathY);
+      
+      textEl.text(`d. ${d.data.deathDate}`);
+    });
   
   nodeGroupEnter.merge(nodeGroup as any)
     .select('.node-death')
