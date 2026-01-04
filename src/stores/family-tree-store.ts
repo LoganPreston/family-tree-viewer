@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { FamilyTree, Person, Relationship, RelationshipType, Gender } from '../types/family-tree';
+import type { FamilyTree, Person, Relationship, RelationshipType } from '../types/family-tree';
 
 export const useFamilyTreeStore = defineStore('familyTree', () => {
   const familyTree = ref<FamilyTree>({
