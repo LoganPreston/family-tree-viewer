@@ -31,6 +31,16 @@
           </select>
         </div>
         
+        <div class="form-group">
+          <label>Religion</label>
+          <input v-model="formData.religion" type="text" placeholder="e.g., Protestant" />
+        </div>
+        
+        <div class="form-group">
+          <label>Occupation</label>
+          <input v-model="formData.occupation" type="text" placeholder="e.g., Homemaker" />
+        </div>
+        
         <div v-if="person" class="form-group">
           <label>Relationships</label>
           <div class="relationships-list">
@@ -96,7 +106,9 @@ const formData = ref({
   name: '',
   birthDate: '',
   deathDate: '',
-  gender: '' as Gender | ''
+  gender: '' as Gender | '',
+  religion: '',
+  occupation: ''
 });
 
 const newRelationshipType = ref<RelationshipType | ''>('');
@@ -122,7 +134,9 @@ watch(() => props.personId, (newId) => {
       name: person.value.name,
       birthDate: person.value.birthDate || '',
       deathDate: person.value.deathDate || '',
-      gender: person.value.gender || ''
+      gender: person.value.gender || '',
+      religion: person.value.religion || '',
+      occupation: person.value.occupation || ''
     };
   } else {
     // Reset form for new person
@@ -130,7 +144,9 @@ watch(() => props.personId, (newId) => {
       name: '',
       birthDate: '',
       deathDate: '',
-      gender: ''
+      gender: '',
+      religion: '',
+      occupation: ''
     };
   }
 }, { immediate: true });
@@ -172,7 +188,9 @@ function save() {
       name: formData.value.name,
       birthDate: formData.value.birthDate || undefined,
       deathDate: formData.value.deathDate || undefined,
-      gender: (formData.value.gender || undefined) as Gender | undefined
+      gender: (formData.value.gender || undefined) as Gender | undefined,
+      religion: formData.value.religion || undefined,
+      occupation: formData.value.occupation || undefined
     });
   } else {
     // Add new person
@@ -181,7 +199,9 @@ function save() {
       birthDate: formData.value.birthDate || undefined,
       deathDate: formData.value.deathDate || undefined,
       gender: (formData.value.gender || undefined) as Gender | undefined,
-      relationships: []
+      relationships: [],
+      religion: formData.value.religion || undefined,
+      occupation: formData.value.occupation || undefined
     });
   }
   

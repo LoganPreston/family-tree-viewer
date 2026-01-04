@@ -95,6 +95,14 @@ function validatePerson(data: any): Person {
     throw new Error('Invalid person: "events" must be an array or undefined');
   }
   
+  if (data.religion !== undefined && typeof data.religion !== 'string') {
+    throw new Error('Invalid person: "religion" must be a string or undefined');
+  }
+  
+  if (data.occupation !== undefined && typeof data.occupation !== 'string') {
+    throw new Error('Invalid person: "occupation" must be a string or undefined');
+  }
+  
   const relationships = data.relationships.map((rel: any) => {
     if (!rel || typeof rel !== 'object') {
       throw new Error('Invalid relationship: must be an object');
@@ -145,7 +153,9 @@ function validatePerson(data: any): Person {
     deathDate: data.deathDate,
     gender: data.gender,
     relationships,
-    events
+    events,
+    religion: data.religion,
+    occupation: data.occupation
   };
 }
 

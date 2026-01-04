@@ -4,6 +4,21 @@
       <h1>Family Tree Viewer</h1>
       <div class="header-actions">
         <button 
+          v-if="hasData && store.canGoBack" 
+          @click="store.goBack" 
+          class="back-btn"
+          title="Go back to previous person"
+        >
+          ← Back
+        </button>
+        <button 
+          v-if="hasData" 
+          @click="showUpload = true" 
+          class="upload-btn"
+        >
+          Upload New File
+        </button>
+        <button 
           v-if="hasData" 
           @click="exportTree" 
           class="export-btn"
@@ -37,6 +52,18 @@
       :person-id="null"
       @close="handleAddPersonClose"
     />
+    
+    <div v-if="showUpload" class="upload-modal-overlay" @click.self="showUpload = false">
+      <div class="upload-modal">
+        <div class="upload-modal-header">
+          <h2>Upload New Family Tree</h2>
+          <button class="close-btn" @click="showUpload = false">&times;</button>
+        </div>
+        <div class="upload-modal-content">
+          <FileUpload @loaded="handleFileLoaded" />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -50,11 +77,13 @@ import { downloadJson } from './utils/json-exporter';
 
 const store = useFamilyTreeStore();
 const showAddPerson = ref(false);
+const showUpload = ref(false);
 
 const hasData = computed(() => store.familyTree.persons.length > 0);
 
 function handleFileLoaded() {
   // File loaded, tree will be displayed
+  showUpload.value = false;
 }
 
 function exportTree() {
@@ -106,13 +135,33 @@ body {
 }
 
 .export-btn,
-.add-person-btn {
+.add-person-btn,
+.back-btn,
+.upload-btn {
   padding: 8px 16px;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
+}
+
+.back-btn {
+  background: #757575;
+  color: white;
+}
+
+.back-btn:hover {
+  background: #616161;
+}
+
+.upload-btn {
+  background: #ff9800;
+  color: white;
+}
+
+.upload-btn:hover {
+  background: #f57c00;
 }
 
 .export-btn {
@@ -146,6 +195,66 @@ body {
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   overflow: hidden;
+}
+
+.upload-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.upload-modal {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 600px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.upload-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.upload-modal-header h2 {
+  margin: 0;
+  color: #333;
+}
+
+.upload-modal-header .close-btn {
+  background: none;
+  border: none;
+  font-size: 28px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.upload-modal-header .close-btn:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.upload-modal-content {
+  padding: 0;
 }
 </style>
 

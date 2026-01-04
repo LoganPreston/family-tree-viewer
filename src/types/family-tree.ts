@@ -21,6 +21,8 @@ export interface Person {
   gender?: Gender;
   relationships: Relationship[];
   events?: Event[];
+  religion?: string;
+  occupation?: string;
 }
 
 export interface FamilyTree {

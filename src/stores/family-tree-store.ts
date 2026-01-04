@@ -14,6 +14,8 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
   const zoom = ref(1);
   const panX = ref(0);
   const panY = ref(0);
+  const navigationHistory = ref<string[]>([]);
+  const historyIndex = ref<number>(-1);
   
   const selectedPerson = computed(() => {
     if (!selectedPersonId.value) return null;
@@ -22,6 +24,10 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
   
   function loadFamilyTree(tree: FamilyTree) {
     familyTree.value = tree;
+    // Reset navigation history when loading a new tree
+    navigationHistory.value = [];
+    historyIndex.value = -1;
+    
     // Set initial root - prefer tree's rootPersonId, otherwise first person
     if (tree.rootPersonId) {
       currentRootPersonId.value = tree.rootPersonId;
@@ -36,6 +42,17 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
   }
   
   function setCurrentRoot(personId: string) {
+    // Add to navigation history
+    if (currentRootPersonId.value && currentRootPersonId.value !== personId) {
+      // Remove any history after current index (if we're going back and then forward)
+      if (historyIndex.value < navigationHistory.value.length - 1) {
+        navigationHistory.value = navigationHistory.value.slice(0, historyIndex.value + 1);
+      }
+      // Add new person to history
+      navigationHistory.value.push(currentRootPersonId.value);
+      historyIndex.value = navigationHistory.value.length - 1;
+    }
+    
     currentRootPersonId.value = personId;
     selectedPersonId.value = personId;
   }
@@ -156,8 +173,37 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
   }
   
   function setSelectedPerson(id: string | null) {
+    // Track navigation when selecting a person (if it's different from current)
+    if (id && selectedPersonId.value && selectedPersonId.value !== id) {
+      // Remove any history after current index (if we're going back and then forward)
+      if (historyIndex.value < navigationHistory.value.length - 1) {
+        navigationHistory.value = navigationHistory.value.slice(0, historyIndex.value + 1);
+      }
+      // Add current person to history
+      navigationHistory.value.push(selectedPersonId.value);
+      historyIndex.value = navigationHistory.value.length - 1;
+    }
+    
     selectedPersonId.value = id;
   }
+  
+  function goBack() {
+    if (canGoBack.value && historyIndex.value >= 0) {
+      const previousPersonId = navigationHistory.value[historyIndex.value];
+      historyIndex.value--;
+      // Remove the person we're going back to from history (since we're now at that position)
+      navigationHistory.value.pop();
+      
+      // Navigate to previous person
+      if (previousPersonId) {
+        setCurrentRoot(previousPersonId);
+      }
+    }
+  }
+  
+  const canGoBack = computed(() => {
+    return navigationHistory.value.length > 0 && historyIndex.value >= 0;
+  });
   
   function setZoom(newZoom: number) {
     zoom.value = Math.max(0.1, Math.min(5, newZoom));
@@ -183,6 +229,7 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
     zoom,
     panX,
     panY,
+    canGoBack,
     loadFamilyTree,
     addPerson,
     updatePerson,
@@ -194,7 +241,8 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
     setMaxGenerations,
     setZoom,
     setPan,
-    resetView
+    resetView,
+    goBack
   };
 });
 

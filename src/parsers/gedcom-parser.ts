@@ -388,6 +388,41 @@ function parseIndividual(record: GedcomRecord): Person | null {
     }
   }
   
+  // Parse RELIGION tag
+  for (const line of record.lines) {
+    if (line.tag === 'RELIGION') {
+      person.religion = line.value;
+    }
+  }
+  // Also check child records for RELIGION
+  for (const childRecord of record.children) {
+    for (const line of childRecord.lines) {
+      if (line.tag === 'RELIGION') {
+        person.religion = line.value;
+      }
+    }
+  }
+  
+  // Parse OCCUPATION tag
+  for (const line of record.lines) {
+    if (line.tag === 'OCCUPATION') {
+      // OCCUPATION value is the occupation itself
+      person.occupation = line.value;
+    }
+  }
+  // Also check child records for OCCUPATION (may have nested PLACE)
+  for (const childRecord of record.children) {
+    if (childRecord.lines.some(l => l.tag === 'OCCUPATION')) {
+      const occupationLine = childRecord.lines.find(l => l.tag === 'OCCUPATION');
+      if (occupationLine?.value) {
+        person.occupation = occupationLine.value;
+      }
+      // Check for PLACE sub-tag (occupation location)
+      // Note: We're storing just the occupation, not the place, as per Person interface
+      // If needed, we could add occupationPlace field later
+    }
+  }
+  
   // Parse EVENT records
   for (const childRecord of record.children) {
     // Check if this child record is an EVENT (type is EVENT or has EVENT tag in lines)

@@ -215,6 +215,32 @@ export function buildTreeData(
             if (!spouseParentNode.children.some((child: TreeNode) => child.id === spouseId)) {
               spouseParentNode.children.push(spouseNode);
             }
+          } else {
+            // Spouse has a parent in the data, but that parent is not in the tree
+            // (e.g., outside maxGenerations or not part of the tree structure)
+            // Add spouse to tree structure anyway - add as sibling to partner if partner has parent,
+            // or rely on wrapper root logic for root-level spouses
+            const nodeParent = node.parent;
+            
+            if (nodeParent && !nodeParent.isNavigationNode) {
+            // Check if partner's parent is actually in the tree
+            const nodeParentInTree = nodeMap.has(nodeParent.id);
+            if (nodeParentInTree) {
+              // Partner has a parent in the tree - add spouse as sibling
+              spouseNode.parent = nodeParent;
+              spouseNode.isInvisibleLink = true; // Mark link as invisible
+              if (!nodeParent.children) {
+                nodeParent.children = [];
+              }
+              // Check if already added
+              if (!nodeParent.children.some((child: TreeNode) => child.id === spouseId)) {
+                nodeParent.children.push(spouseNode);
+              }
+            } else {
+              // Partner's parent is not in the tree - spouse will be handled by root-level spouse logic
+            }
+          }
+          // If partner also has no parent (root level), wrapper root logic will handle it
           }
         } else {
           // Spouse has no parent in the data - need to add them to tree structure
@@ -222,16 +248,23 @@ export function buildTreeData(
           // This ensures they're in the tree and can be positioned next to each other
           // Mark the link as invisible since the spouse isn't actually a child of this parent
           const nodeParent = node.parent;
+          
           if (nodeParent && !nodeParent.isNavigationNode) {
-            // Partner has a parent - add spouse as sibling
-            spouseNode.parent = nodeParent;
-            spouseNode.isInvisibleLink = true; // Mark link as invisible
-            if (!nodeParent.children) {
-              nodeParent.children = [];
-            }
-            // Check if already added
-            if (!nodeParent.children.some((child: TreeNode) => child.id === spouseId)) {
-              nodeParent.children.push(spouseNode);
+            // Check if partner's parent is actually in the tree
+            const nodeParentInTree = nodeMap.has(nodeParent.id);
+            if (nodeParentInTree) {
+              // Partner has a parent in the tree - add spouse as sibling
+              spouseNode.parent = nodeParent;
+              spouseNode.isInvisibleLink = true; // Mark link as invisible
+              if (!nodeParent.children) {
+                nodeParent.children = [];
+              }
+              // Check if already added
+              if (!nodeParent.children.some((child: TreeNode) => child.id === spouseId)) {
+                nodeParent.children.push(spouseNode);
+              }
+            } else {
+              // Partner's parent is not in the tree - spouse will be handled by root-level spouse logic
             }
           }
           // If partner also has no parent (both at root level), this will be handled
@@ -392,6 +425,51 @@ export function buildTreeData(
   // Sort all children arrays to group spouses
   sortChildrenToGroupSpouses(rootNode);
   
+  // Final pass: Find all spouse nodes in nodeMap that don't have a parent
+  // These are spouses that were created but couldn't be added because their parent/partner's parent wasn't in the tree
+  for (const [spouseId, spouseNode] of nodeMap.entries()) {
+    if (spouseNode.parent) continue; // Already has a parent
+    
+    const spousePerson = personMap.get(spouseId);
+    if (!spousePerson) continue;
+    
+    // Find the spouse's partner(s) in the tree
+    const partnerIds = spousePerson.relationships
+      .filter(rel => rel.type === 'spouse')
+      .map(rel => rel.personId);
+    
+    for (const partnerId of partnerIds) {
+      const partnerNode = nodeMap.get(partnerId);
+      if (!partnerNode) continue; // Partner not in tree
+      
+      // Try to add spouse as sibling to partner
+      const partnerParent = partnerNode.parent;
+      if (partnerParent && !partnerParent.isNavigationNode && nodeMap.has(partnerParent.id)) {
+        // Partner has a parent in the tree - add spouse as sibling
+        spouseNode.parent = partnerParent;
+        spouseNode.isInvisibleLink = true;
+        if (!partnerParent.children) {
+          partnerParent.children = [];
+        }
+        if (!partnerParent.children.some((child: TreeNode) => child.id === spouseId)) {
+          partnerParent.children.push(spouseNode);
+        }
+        break; // Added to tree, no need to check other partners
+      } else if (partnerId === rootPersonId) {
+        // Partner is root - will be handled by root-level spouse logic
+        break;
+      } else if (!partnerParent || partnerParent.isNavigationNode) {
+        // Partner has no parent (or only navigation parent) - add spouse as sibling to partner
+        // This handles cases where partner is in tree but doesn't have a parent in tree
+        // We'll add them both to a wrapper root later if needed
+        spouseNode.parent = partnerNode.parent; // Could be null or navigation node
+        spouseNode.isInvisibleLink = true;
+        // Don't add to children here - will be handled by wrapper root logic if partner is root
+        break;
+      }
+    }
+  }
+  
   // Handle root-level spouses (spouses that don't have parents)
   // If root has a spouse at root level, ensure they're positioned as siblings
   let finalRoot = rootNode;
@@ -405,26 +483,62 @@ export function buildTreeData(
     
     // Check if spouse has a parent
     const spouseParentRel = spousePerson.relationships.find((r: any) => r.type === 'parent');
-    if (!spouseParentRel) {
-      // Spouse has no parent - they're at root level
+    const spouseParentInTree = spouseParentRel ? nodeMap.has(spouseParentRel.personId) : false;
+    
+    // Handle root's spouse if:
+    // 1. Spouse has no parent, OR
+    // 2. Spouse has a parent but that parent is not in the tree (outside maxGenerations or not part of tree)
+    if (!spouseParentRel || !spouseParentInTree) {
+      // Spouse is effectively at root level (no parent or parent not in tree)
       // Ensure they're positioned as sibling to root
       let spouseNode = nodeMap.get(spouseId);
-      if (spouseNode && !spouseNode.parent) {
-        // Spouse is at root level - if root also has no parent (or only navigation parent),
-        // we need to create a wrapper or ensure they're siblings
-        // For now, if root has no actual parent (only navigation), make them siblings
+      
+      // If spouse doesn't exist yet, create it
+      if (!spouseNode) {
+        // Verify reciprocal relationship
+        const isReciprocal = spousePerson.relationships.some(r => 
+          r.type === 'spouse' && r.personId === rootPersonId
+        );
+        if (!isReciprocal) continue;
+        
+        // Create spouse node at root level (generation 0)
+        spouseNode = {
+          id: spousePerson.id,
+          name: spousePerson.name,
+          birthDate: spousePerson.birthDate,
+          deathDate: spousePerson.deathDate,
+          gender: spousePerson.gender,
+          generation: 0, // Same generation as root
+          children: undefined,
+          parent: null
+        };
+        nodeMap.set(spouseId, spouseNode);
+      }
+      
+      // If spouse has no parent (or parent not in tree), add them to wrapper root with the actual root
+      if (!spouseNode.parent) {
+        // If root also has no parent (or only navigation parent), create wrapper root
         if (!finalRoot.parent || finalRoot.parent.isNavigationNode) {
-          // Create a wrapper root to hold both root and spouse as siblings
-          const wrapperRoot: TreeNode = {
-            id: '__wrapper_root__',
-            name: '',
-            generation: -1,
-            children: [finalRoot, spouseNode],
-            parent: null
-          };
-          finalRoot.parent = wrapperRoot;
-          spouseNode.parent = wrapperRoot;
-          finalRoot = wrapperRoot;
+          // Check if wrapper root already exists
+          if (finalRoot.id === '__wrapper_root__') {
+            // Wrapper root already exists - just add spouse if not already there
+            if (!finalRoot.children!.some((child: TreeNode) => child.id === spouseId)) {
+              finalRoot.children!.push(spouseNode);
+              spouseNode.parent = finalRoot;
+            }
+          } else {
+            // Create a wrapper root to hold both root and spouse as siblings
+            const wrapperRoot: TreeNode = {
+              id: '__wrapper_root__',
+              name: '',
+              generation: -1,
+              children: [finalRoot, spouseNode],
+              parent: null
+            };
+            finalRoot.parent = wrapperRoot;
+            spouseNode.parent = wrapperRoot;
+            finalRoot = wrapperRoot;
+          }
         }
       }
     }
