@@ -359,16 +359,42 @@ function parseIndividual(record: GedcomRecord): Person | null {
     person.name = fullName || 'Unknown';
   }
   
+  // Helper function to recursively find DATE value in nested structure
+  function findDateValue(record: GedcomRecord): string | undefined {
+    // Check all DATE lines in direct lines (there might be multiple, find the one with a value)
+    for (const line of record.lines) {
+      if (line.tag === 'DATE' && line.value) {
+        return line.value;
+      }
+    }
+    // Check nested children recursively (search all children, not just those with DATE tag)
+    for (const child of record.children) {
+      const value = findDateValue(child);
+      if (value) {
+        return value;
+      }
+    }
+    return undefined;
+  }
+  
   // Parse dates - look for BIRT/BIRTH and DEAT/DEATH events
   for (const childRecord of record.children) {
-    if (childRecord.lines.some(l => l.tag === 'BIRT' || l.tag === 'BIRTH')) {
-      // Birth event found, look for DATE and PLACE in nested children
+    if (childRecord.type === 'BIRT' || childRecord.type === 'BIRTH' || 
+        childRecord.lines.some(l => l.tag === 'BIRT' || l.tag === 'BIRTH')) {
+      // Birth event found, look for DATE and PLACE in nested children (handle nested DATE structures)
       for (const dateRecord of childRecord.children) {
-        if (dateRecord.lines.some(l => l.tag === 'DATE')) {
-          person.birthDate = dateRecord.lines.find(l => l.tag === 'DATE')?.value;
+        if (dateRecord.lines.some(l => l.tag === 'DATE') || dateRecord.type === 'DATE') {
+          // Use recursive function to find DATE value
+          const dateValue = findDateValue(dateRecord);
+          if (dateValue) {
+            person.birthDate = dateValue;
+          }
         }
         if (dateRecord.lines.some(l => l.tag === 'PLACE')) {
-          person.birthPlace = dateRecord.lines.find(l => l.tag === 'PLACE')?.value;
+          const placeValue = dateRecord.lines.find(l => l.tag === 'PLACE')?.value;
+          if (placeValue) {
+            person.birthPlace = placeValue;
+          }
         }
       }
       // Also check direct lines in the BIRT/BIRTH record
@@ -376,20 +402,35 @@ function parseIndividual(record: GedcomRecord): Person | null {
       if (birthDateLine?.value) {
         person.birthDate = birthDateLine.value;
       }
+      // Also recursively search all children for DATE
+      const recursiveDateValue = findDateValue(childRecord);
+      if (recursiveDateValue && !person.birthDate) {
+        person.birthDate = recursiveDateValue;
+      }
       const birthPlaceLine = childRecord.lines.find(l => l.tag === 'PLACE');
       if (birthPlaceLine?.value) {
         person.birthPlace = birthPlaceLine.value;
       }
-    } else if (childRecord.lines.some(l => l.tag === 'DEAT' || l.tag === 'DEATH')) {
+    } else if (childRecord.type === 'DEAT' || childRecord.type === 'DEATH' ||
+               childRecord.lines.some(l => l.tag === 'DEAT' || l.tag === 'DEATH')) {
       // Death event found
       for (const dateRecord of childRecord.children) {
-        if (dateRecord.lines.some(l => l.tag === 'DATE')) {
-          person.deathDate = dateRecord.lines.find(l => l.tag === 'DATE')?.value;
+        if (dateRecord.lines.some(l => l.tag === 'DATE') || dateRecord.type === 'DATE') {
+          // Use recursive function to find DATE value
+          const dateValue = findDateValue(dateRecord);
+          if (dateValue) {
+            person.deathDate = dateValue;
+          }
         }
       }
       const deathDateLine = childRecord.lines.find(l => l.tag === 'DATE');
       if (deathDateLine?.value) {
         person.deathDate = deathDateLine.value;
+      }
+      // Also recursively search all children for DATE
+      const recursiveDateValue = findDateValue(childRecord);
+      if (recursiveDateValue && !person.deathDate) {
+        person.deathDate = recursiveDateValue;
       }
     }
   }
@@ -483,10 +524,11 @@ function parseIndividual(record: GedcomRecord): Person | null {
     }
   }
   
-  // Parse EVENT records
+  // Parse EVENT records (GEDCOM uses EVEN, not EVENT)
   for (const childRecord of record.children) {
-    // Check if this child record is an EVENT (type is EVENT or has EVENT tag in lines)
-    if (childRecord.type === 'EVENT' || childRecord.lines.some(l => l.tag === 'EVENT')) {
+    // Check if this child record is an EVENT (type is EVENT/EVEN or has EVENT/EVEN tag in lines)
+    if (childRecord.type === 'EVENT' || childRecord.type === 'EVEN' || 
+        childRecord.lines.some(l => l.tag === 'EVENT' || l.tag === 'EVEN')) {
       const event: Event = {
         type: '',
         date: undefined,

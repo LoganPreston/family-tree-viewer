@@ -166,23 +166,36 @@ function initializeTree() {
   g = svg.append('g');
   
   // Set up zoom behavior
-  zoom = d3.zoom<SVGElement, unknown>()
-    .scaleExtent([0.1, 3])
-    .on('zoom', (event) => {
-      if (g) {
-        g.attr('transform', event.transform);
-      }
-      store.setZoom(event.transform.k);
-      store.setPan(event.transform.x, event.transform.y);
-    });
-  
-  svg.call(zoom);
+  try {
+    zoom = d3.zoom<SVGElement, unknown>()
+      .scaleExtent([0.1, 3])
+      .on('zoom', (event) => {
+        if (g) {
+          g.attr('transform', event.transform);
+        }
+        store.setZoom(event.transform.k);
+        store.setPan(event.transform.x, event.transform.y);
+      });
+    
+    svg.call(zoom);
+  } catch (error) {
+    // D3 zoom may fail in some environments due to missing SVG properties
+    console.warn('Failed to set up zoom behavior:', error);
+    zoom = null; // Set to null so subsequent checks work
+  }
   
   // Apply initial zoom/pan
-  const initialTransform = d3.zoomIdentity
-    .translate(store.panX, store.panY)
-    .scale(store.zoom);
-  svg.call(zoom.transform, initialTransform);
+  if (zoom) {
+    try {
+      const initialTransform = d3.zoomIdentity
+        .translate(store.panX, store.panY)
+        .scale(store.zoom);
+      svg.call(zoom.transform, initialTransform);
+    } catch (error) {
+      // D3 zoom may fail in some environments due to missing SVG properties
+      console.warn('Failed to apply initial zoom transform:', error);
+    }
+  }
   
   // Build tree data with generation limiting
   const treeData = buildTreeData(store.familyTree, store.currentRootPersonId, store.maxGenerations);
@@ -368,13 +381,18 @@ function initializeTree() {
     });
     
     // Apply transform using D3 zoom
-    const centerTransform = d3.zoomIdentity
-      .translate(translateX, translateY)
-      .scale(scale);
-    svg.call(zoom.transform, centerTransform);
-    
-    // Update store with new pan values
-    store.setPan(translateX, translateY);
+    try {
+      const centerTransform = d3.zoomIdentity
+        .translate(translateX, translateY)
+        .scale(scale);
+      svg.call(zoom.transform, centerTransform);
+      
+      // Update store with new pan values
+      store.setPan(translateX, translateY);
+    } catch (error) {
+      // D3 zoom may fail in some environments due to missing SVG properties
+      console.warn('Failed to center root person:', error);
+    }
   } else {
     // Fallback: center the tree as before
     const dx = x1 - x0 + nodeWidth + nodeSpacing * 2;
@@ -387,11 +405,19 @@ function initializeTree() {
     
     // Apply transform using D3 zoom if available
     if (svg && zoom) {
-      const fallbackTransform = d3.zoomIdentity
-        .translate(translateX, translateY)
-        .scale(store.zoom);
-      svg.call(zoom.transform, fallbackTransform);
-      store.setPan(translateX, translateY);
+      try {
+        const fallbackTransform = d3.zoomIdentity
+          .translate(translateX, translateY)
+          .scale(store.zoom);
+        svg.call(zoom.transform, fallbackTransform);
+        store.setPan(translateX, translateY);
+      } catch (error) {
+        // D3 zoom may fail in some environments due to missing SVG properties
+        // Fall back to direct transform
+        if (g) {
+          g.attr('transform', `translate(${translateX},${translateY})`);
+        }
+      }
     } else if (g) {
       g.attr('transform', `translate(${translateX},${translateY})`);
     }
