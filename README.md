@@ -2,6 +2,22 @@
 
 A modern web application for visualizing and managing family trees. Built with Vue 3, TypeScript, and D3.js, this application provides an interactive, zoomable family tree visualization with support for GEDCOM and JSON file formats.
 
+This repo / project was created partly as a test for a non-trivial program to work with AI (cursor), get better at prompting, and be more hands-off coding. I've shipped JS and Vue, and used Vitest as a part of that but don't have much hands-on with Typescript specifically at time of writing. I thought this would make this project familiar enough to dig in when needed, and still learn something, while also keeping me from being too particular on details (though that might not be a bad thing). 
+
+Some frustrations along the way:
+- Repeat bugs. AI would fix one bug, introduce another, and then cycle back and forth when trying to fix them. Still needed watching and handholding to avoid cycling.
+- Describing ambiguous changes to the AI. An important part of a family tree is for certain nodes to be closer together, like spouses. The initial implementation had spouses essentially appended to the list of siblings at a level in the tree, leading to a terrible UX. When I told the assistant to "bring spouses closer together", it took that literally by reducing spacing between nodes, rather than sorting them. Being more specific in this case by telling it to sort rather than just bringing them together.
+- AI doesn't know what looks good still, so being specific on what looks good is helpful.
+- When making tests, the AI got frustrated at repeat failures and started seeking ways to suppress the errors rather than fixing the tests or removing them.
+- The GEDCOM format in my test data is a bit old / wonky (that just might be the format though) so it doesn't currently pull everything in appropriately
+
+Some succeses:
+- This project didn't take all that long to set up, and I really was able to let it go on it's own quite a bit
+- It was really easy to add features as I thought of them. Hugely satisfying with how tight that feedback loop could be
+- Debug mode was really impressive, it caught and reviewed logs for an issue, then immediately applied a fix to the issue
+
+I will be coming back to this and working through the code more in detail to see if it's maintainable, what I would change, and review for quality.
+
 ## Features
 
 - **File Support**: Import family tree data from GEDCOM (.ged) or JSON files
