@@ -5,7 +5,7 @@ if (typeof process !== 'undefined') {
   const originalUnhandledRejection = process.listeners('unhandledRejection');
   process.removeAllListeners('unhandledRejection');
 
-  process.on('unhandledRejection', (reason) => {
+  process.on('unhandledRejection', (reason: unknown) => {
     // Suppress D3 zoom errors in test environment
     if (reason instanceof Error && 
         (reason.message.includes('Cannot read properties of undefined') ||

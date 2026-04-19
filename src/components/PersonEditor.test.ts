@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { setActivePinia, createPinia } from 'pinia';
 import PersonEditor from './PersonEditor.vue';
 import { useFamilyTreeStore } from '../stores/family-tree-store';
-import { mockFamilyTree, mockPerson1 } from '../tests/utils/mock-data';
+import { mockFamilyTree } from '../tests/utils/mock-data';
 
 describe('PersonEditor', () => {
   beforeEach(() => {

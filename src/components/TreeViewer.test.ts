@@ -3,7 +3,7 @@ import { shallowMount } from '@vue/test-utils';
 import { setActivePinia, createPinia } from 'pinia';
 import TreeViewer from './TreeViewer.vue';
 import { useFamilyTreeStore } from '../stores/family-tree-store';
-import { mockFamilyTree, mockSimpleTree } from '../tests/utils/mock-data';
+import { mockFamilyTree } from '../tests/utils/mock-data';
 
 describe('TreeViewer', () => {
   beforeEach(() => {

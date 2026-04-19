@@ -3,7 +3,6 @@ import { setActivePinia, createPinia } from 'pinia';
 import { useFamilyTreeStore } from './stores/family-tree-store';
 import { mockFamilyTree } from './tests/utils/mock-data';
 import { findShortestPath } from './utils/path-finder';
-import { downloadJson } from './utils/json-exporter';
 
 // Simplified App tests - testing store integration rather than full component rendering
 // Full component rendering tests are complex due to D3.js and Vue component interactions
