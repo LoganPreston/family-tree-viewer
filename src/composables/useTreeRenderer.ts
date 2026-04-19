@@ -23,17 +23,16 @@ function extractYearFromBirthdate(birthDate?: string): number | null {
 }
 
 function wrapText(text: string, maxWidth: number, fontSize = '11px', fontWeight = 'normal'): string[] {
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
-  if (!context) return [text];
   const size = parseFloat(fontSize) || 11;
-  context.font = `${fontWeight} ${size}px Arial, sans-serif`;
+  // Bold characters are ~0.65× font size wide; normal ~0.55×
+  const charWidth = size * (fontWeight === 'bold' ? 0.65 : 0.55);
+  const maxChars = Math.max(1, Math.floor(maxWidth / charWidth));
   const words = text.split(/\s+/);
   const lines: string[] = [];
   let currentLine = '';
   for (const word of words) {
     const testLine = currentLine ? `${currentLine} ${word}` : word;
-    if (context.measureText(testLine).width > maxWidth && currentLine) {
+    if (testLine.length > maxChars && currentLine) {
       lines.push(currentLine);
       currentLine = word;
     } else {
