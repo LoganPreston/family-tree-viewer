@@ -133,17 +133,7 @@ function wrapText(text: string, maxWidth: number, fontSize: string = '11px', fon
 }
 
 function initializeTree() {
-  console.log('initializeTree called', { 
-    hasSvgRef: !!svgRef.value, 
-    hasContainerRef: !!containerRef.value,
-    hasData: hasData.value,
-    personsCount: store.familyTree.persons.length,
-    currentRoot: store.currentRootPersonId,
-    maxGenerations: store.maxGenerations
-  });
-  
   if (!svgRef.value || !hasData.value || !store.currentRootPersonId) {
-    console.log('initializeTree: early return - missing refs, data, or root');
     return;
   }
   
@@ -153,13 +143,10 @@ function initializeTree() {
   svg = d3.select(svgRef.value);
   
   if (!containerRef.value) {
-    console.log('initializeTree: no containerRef');
     return;
   }
   const width = containerRef.value.clientWidth || 800;
   const height = containerRef.value.clientHeight || 600;
-  
-  console.log('initializeTree: container size', { width, height });
   
   svg.attr('width', width).attr('height', height);
   
@@ -199,10 +186,8 @@ function initializeTree() {
   
   // Build tree data with generation limiting
   const treeData = buildTreeData(store.familyTree, store.currentRootPersonId, store.maxGenerations);
-  console.log('initializeTree: treeData', treeData);
-  
+
   if (!treeData) {
-    console.log('initializeTree: no treeData returned');
     return;
   }
   
@@ -309,8 +294,6 @@ function initializeTree() {
     }
   });
   
-  console.log('initializeTree: root after layout', root);
-  
   // Calculate bounds (excluding nodes with invalid positions)
   let x0 = Infinity;
   let x1 = -Infinity;
@@ -336,8 +319,6 @@ function initializeTree() {
     y0 = 0;
     y1 = nodeHeight;
   }
-  
-  console.log('initializeTree: bounds', { x0, x1, y0, y1 });
   
   // Find the root person node to center it on screen
   let rootPersonNode: d3.HierarchyPointNode<TreeNode> | null = null;
@@ -376,10 +357,6 @@ function initializeTree() {
     const translateX = viewportCenterX - rootX * scale;
     const translateY = viewportCenterY - rootY * scale;
     
-    console.log('initializeTree: centering root person', { 
-      rootX, rootY, viewportCenterX, viewportCenterY, translateX, translateY, scale 
-    });
-    
     // Apply transform using D3 zoom
     try {
       const centerTransform = d3.zoomIdentity
@@ -401,8 +378,6 @@ function initializeTree() {
     const translateX = (width - dx) / 2 - x0;
     const translateY = nodeSpacing;
     
-    console.log('initializeTree: transform (fallback)', { translateX, translateY, dx, dy });
-    
     // Apply transform using D3 zoom if available
     if (svg && zoom) {
       try {
@@ -423,21 +398,11 @@ function initializeTree() {
     }
   }
   
-  // Draw links
-  console.log('initializeTree: drawing links');
   if (root) {
     drawLinks(root);
-    
-    // Draw spouse connections (before nodes so nodes appear on top)
-    console.log('initializeTree: drawing spouse links');
     drawSpouseLinks(root);
-    
-    // Draw nodes (after links so nodes appear on top)
-    console.log('initializeTree: drawing nodes');
     drawNodes(root);
   }
-  
-  console.log('initializeTree: complete');
 }
 
 function drawLinks(rootNode: d3.HierarchyPointNode<TreeNode>) {
@@ -849,18 +814,9 @@ function handleNodeClick(d: d3.HierarchyPointNode<TreeNode>) {
 }
 
 watch(() => [store.familyTree, store.currentRootPersonId, store.maxGenerations], async () => {
-  console.log('watch: familyTree/root/generations changed', { 
-    personsCount: store.familyTree.persons.length,
-    currentRoot: store.currentRootPersonId,
-    maxGenerations: store.maxGenerations
-  });
   if (hasData.value && store.currentRootPersonId) {
-    console.log('watch: hasData and root, waiting for nextTick');
     await nextTick();
-    console.log('watch: calling initializeTree');
     initializeTree();
-  } else {
-    console.log('watch: missing data or root');
   }
 }, { deep: true, immediate: false });
 
@@ -876,12 +832,8 @@ watch(() => store.connectionPath, async () => {
 });
 
 watch(hasData, async (newValue) => {
-  console.log('watch hasData:', newValue);
   if (newValue && store.currentRootPersonId) {
-    // Wait a bit longer to ensure DOM is fully ready
     await nextTick();
-    await new Promise(resolve => setTimeout(resolve, 100));
-    console.log('watch hasData: calling initializeTree after delay');
     initializeTree();
   }
 });
@@ -903,10 +855,8 @@ watch(() => store.selectedPersonId, () => {
 });
 
 onMounted(async () => {
-  console.log('TreeViewer onMounted', { hasData: hasData.value, currentRoot: store.currentRootPersonId });
   await nextTick();
   if (hasData.value && store.currentRootPersonId) {
-    console.log('TreeViewer onMounted: hasData and root, calling initializeTree');
     initializeTree();
   }
   

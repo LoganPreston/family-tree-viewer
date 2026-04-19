@@ -169,10 +169,297 @@ describe('tree-layout', () => {
 
     it('should handle complex multi-generation trees', () => {
       const result = buildTreeData(mockFamilyTree, 'person1', 4);
-      
+
       expect(result).toBeDefined();
       // Should handle the tree structure without errors
       expect(result!.id).toBe('person1');
+    });
+
+    // ── wrapper root ──────────────────────────────────────────────────────────
+
+    it('should create __wrapper_root__ when root and spouse both have no parents', () => {
+      const tree: FamilyTree = {
+        rootPersonId: 'p1',
+        persons: [
+          {
+            id: 'p1',
+            name: 'Root',
+            relationships: [{ type: 'spouse', personId: 'p2' }],
+            events: []
+          },
+          {
+            id: 'p2',
+            name: 'Spouse',
+            relationships: [{ type: 'spouse', personId: 'p1' }],
+            events: []
+          }
+        ]
+      };
+
+      const result = buildTreeData(tree, 'p1', 4);
+
+      expect(result).toBeDefined();
+      expect(result!.id).toBe('__wrapper_root__');
+      expect(result!.children).toHaveLength(2);
+      const ids = result!.children!.map(c => c.id);
+      expect(ids).toContain('p1');
+      expect(ids).toContain('p2');
+    });
+
+    it('should add a second spouse to an existing __wrapper_root__', () => {
+      const tree: FamilyTree = {
+        rootPersonId: 'p1',
+        persons: [
+          {
+            id: 'p1',
+            name: 'Root',
+            relationships: [
+              { type: 'spouse', personId: 'p2' },
+              { type: 'spouse', personId: 'p3' }
+            ],
+            events: []
+          },
+          {
+            id: 'p2',
+            name: 'Spouse 1',
+            relationships: [{ type: 'spouse', personId: 'p1' }],
+            events: []
+          },
+          {
+            id: 'p3',
+            name: 'Spouse 2',
+            relationships: [{ type: 'spouse', personId: 'p1' }],
+            events: []
+          }
+        ]
+      };
+
+      const result = buildTreeData(tree, 'p1', 4);
+
+      expect(result).toBeDefined();
+      expect(result!.id).toBe('__wrapper_root__');
+      expect(result!.children).toHaveLength(3);
+    });
+
+    // ── parent navigation node ────────────────────────────────────────────────
+
+    it('should wrap result in __parent_nav__ when root person has parents', () => {
+      const tree: FamilyTree = {
+        rootPersonId: 'child',
+        persons: [
+          {
+            id: 'parent',
+            name: 'Parent',
+            relationships: [{ type: 'child', personId: 'child' }],
+            events: []
+          },
+          {
+            id: 'child',
+            name: 'Child',
+            relationships: [{ type: 'parent', personId: 'parent' }],
+            events: []
+          }
+        ]
+      };
+
+      const result = buildTreeData(tree, 'child', 4);
+
+      expect(result).toBeDefined();
+      expect(result!.id).toBe('__parent_nav__');
+      expect(result!.isNavigationNode).toBe(true);
+      expect(result!.children).toBeDefined();
+      expect(result!.children![0].id).toBe('child');
+    });
+
+    it('should not add __parent_nav__ when root person has no parents', () => {
+      const tree: FamilyTree = {
+        rootPersonId: 'p1',
+        persons: [
+          {
+            id: 'p1',
+            name: 'Root',
+            relationships: [{ type: 'child', personId: 'p2' }],
+            events: []
+          },
+          {
+            id: 'p2',
+            name: 'Child',
+            relationships: [{ type: 'parent', personId: 'p1' }],
+            events: []
+          }
+        ]
+      };
+
+      const result = buildTreeData(tree, 'p1', 4);
+
+      expect(result).toBeDefined();
+      expect(result!.id).toBe('p1');
+      expect(result!.isNavigationNode).toBeFalsy();
+    });
+
+    // ── invisible link (spouse whose parent is outside visible tree) ──────────
+
+    it('should attach spouse as invisible sibling when spouse parent is outside tree', () => {
+      // p2 is child of p0, but p0 is not in the tree (maxGenerations=1 from p1's perspective,
+      // or simply p0 is not in the dataset). p1 and p2 are spouses; p1's parent IS in the tree.
+      const tree: FamilyTree = {
+        rootPersonId: 'grandparent',
+        persons: [
+          {
+            id: 'grandparent',
+            name: 'Grandparent',
+            relationships: [{ type: 'child', personId: 'p1' }],
+            events: []
+          },
+          {
+            id: 'p1',
+            name: 'Person 1',
+            relationships: [
+              { type: 'parent', personId: 'grandparent' },
+              { type: 'spouse', personId: 'p2' }
+            ],
+            events: []
+          },
+          {
+            id: 'p2',
+            name: 'Spouse (outside parent)',
+            relationships: [
+              { type: 'spouse', personId: 'p1' },
+              { type: 'parent', personId: 'missing_parent' } // parent not in dataset
+            ],
+            events: []
+          }
+        ]
+      };
+
+      const result = buildTreeData(tree, 'grandparent', 4);
+
+      expect(result).toBeDefined();
+
+      // Find p2 somewhere in the tree
+      function findNode(node: any, id: string): any {
+        if (node.id === id) return node;
+        for (const child of node.children ?? []) {
+          const found = findNode(child, id);
+          if (found) return found;
+        }
+        return null;
+      }
+
+      const p2Node = findNode(result, 'p2');
+      expect(p2Node).not.toBeNull();
+      expect(p2Node.isInvisibleLink).toBe(true);
+    });
+
+    // ── spouse clustering (sortChildrenToGroupSpouses) ────────────────────────
+
+    it('should group spouse pairs together in children array', () => {
+      // root has 3 children: c1, c2 (spouses of each other), and c3 (unrelated)
+      const tree: FamilyTree = {
+        rootPersonId: 'root',
+        persons: [
+          {
+            id: 'root',
+            name: 'Root',
+            relationships: [
+              { type: 'child', personId: 'c1' },
+              { type: 'child', personId: 'c2' },
+              { type: 'child', personId: 'c3' }
+            ],
+            events: []
+          },
+          {
+            id: 'c1',
+            name: 'Child 1',
+            relationships: [
+              { type: 'parent', personId: 'root' },
+              { type: 'spouse', personId: 'c2' }
+            ],
+            events: []
+          },
+          {
+            id: 'c2',
+            name: 'Child 2',
+            relationships: [
+              { type: 'parent', personId: 'root' },
+              { type: 'spouse', personId: 'c1' }
+            ],
+            events: []
+          },
+          {
+            id: 'c3',
+            name: 'Child 3',
+            relationships: [{ type: 'parent', personId: 'root' }],
+            events: []
+          }
+        ]
+      };
+
+      const result = buildTreeData(tree, 'root', 4);
+
+      expect(result).toBeDefined();
+      expect(result!.id).toBe('root');
+      expect(result!.children).toBeDefined();
+
+      const children = result!.children!;
+      const c1idx = children.findIndex(c => c.id === 'c1');
+      const c2idx = children.findIndex(c => c.id === 'c2');
+
+      expect(c1idx).toBeGreaterThanOrEqual(0);
+      expect(c2idx).toBeGreaterThanOrEqual(0);
+      // c1 and c2 (spouses) should be adjacent
+      expect(Math.abs(c1idx - c2idx)).toBe(1);
+    });
+
+    // ── orphan spouse cleanup (resolveOrphanSpouses) ──────────────────────────
+
+    it('should resolve orphan spouse through the cleanup pass', () => {
+      // p1 (root) and p2 are spouses. p1 has a parent (so it gets a __parent_nav__ wrapper).
+      // p2 has no parent. After positionSpouses, p2 may be orphaned and needs resolveOrphanSpouses
+      // or resolveRootSpouses to place it.
+      const tree: FamilyTree = {
+        rootPersonId: 'p1',
+        persons: [
+          {
+            id: 'parent1',
+            name: 'Parent',
+            relationships: [{ type: 'child', personId: 'p1' }],
+            events: []
+          },
+          {
+            id: 'p1',
+            name: 'Person 1',
+            relationships: [
+              { type: 'parent', personId: 'parent1' },
+              { type: 'spouse', personId: 'p2' }
+            ],
+            events: []
+          },
+          {
+            id: 'p2',
+            name: 'Person 2',
+            relationships: [{ type: 'spouse', personId: 'p1' }],
+            events: []
+          }
+        ]
+      };
+
+      const result = buildTreeData(tree, 'p1', 4);
+
+      // Should not crash; p2 should appear somewhere in the result
+      expect(result).toBeDefined();
+
+      function findNode(node: any, id: string): any {
+        if (node.id === id) return node;
+        for (const child of node.children ?? []) {
+          const found = findNode(child, id);
+          if (found) return found;
+        }
+        return null;
+      }
+
+      const p2Node = findNode(result, 'p2');
+      expect(p2Node).not.toBeNull();
     });
   });
 });

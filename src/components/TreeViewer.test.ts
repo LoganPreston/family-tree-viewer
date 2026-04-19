@@ -128,7 +128,7 @@ describe('TreeViewer', () => {
         persons: []
       };
       store.loadFamilyTree(emptyTree);
-      
+
       const wrapper = shallowMount(TreeViewer, {
         global: {
           stubs: {
@@ -136,10 +136,43 @@ describe('TreeViewer', () => {
           }
         }
       });
-      
+
       await wrapper.vm.$nextTick();
-      
+
       expect(wrapper.find('.empty-state').exists()).toBe(true);
+    });
+  });
+
+  describe('With data loaded', () => {
+    it('should not show empty state when family tree is loaded', async () => {
+      const store = useFamilyTreeStore();
+      store.loadFamilyTree(mockFamilyTree);
+
+      const wrapper = shallowMount(TreeViewer, {
+        global: {
+          stubs: {
+            PersonEditor: true
+          }
+        }
+      });
+
+      await wrapper.vm.$nextTick();
+
+      expect(wrapper.find('.empty-state').exists()).toBe(false);
+    });
+  });
+
+  describe('resetView store integration', () => {
+    it('should reset zoom and pan to defaults via store', () => {
+      const store = useFamilyTreeStore();
+      store.setZoom(2.5);
+      store.setPan(150, 300);
+
+      store.resetView();
+
+      expect(store.zoom).toBe(1);
+      expect(store.panX).toBe(0);
+      expect(store.panY).toBe(0);
     });
   });
 });

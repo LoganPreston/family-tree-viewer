@@ -3,17 +3,28 @@
     <header class="app-header">
       <h1>Family Tree Viewer</h1>
       <div class="header-actions">
-        <button 
-          v-if="hasData && store.canGoBack" 
-          @click="store.goBack" 
+        <button
+          v-if="hasData && store.canGoBack"
+          @click="store.goBack"
           class="back-btn"
           title="Go back to previous person"
         >
           ← Back
         </button>
-        <button 
-          v-if="hasData" 
-          @click="showUpload = true" 
+        <div v-if="hasData" class="generations-control">
+          <label class="gen-label">Generations: {{ store.maxGenerations }}</label>
+          <input
+            type="range"
+            min="1"
+            max="10"
+            :value="store.maxGenerations"
+            @input="store.setMaxGenerations(+($event.target as HTMLInputElement).value)"
+            class="gen-slider"
+          />
+        </div>
+        <button
+          v-if="hasData"
+          @click="showUpload = true"
           class="upload-btn"
         >
           Upload New File
@@ -422,6 +433,25 @@ body {
 .header-actions {
   display: flex;
   gap: 12px;
+}
+
+.generations-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gen-label {
+  font-size: 13px;
+  color: #555;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.gen-slider {
+  width: 90px;
+  cursor: pointer;
+  accent-color: #2196f3;
 }
 
 .export-btn,

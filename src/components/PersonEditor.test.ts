@@ -85,21 +85,19 @@ describe('PersonEditor', () => {
   });
 
   it('should validate required fields (name)', async () => {
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
-    
     const wrapper = mount(PersonEditor, {
       props: {
         isOpen: true,
         personId: null
       }
     });
-    
+
     const saveButton = wrapper.find('.save-btn');
     await saveButton.trigger('click');
-    
-    expect(alertSpy).toHaveBeenCalledWith('Please enter a name');
-    
-    alertSpy.mockRestore();
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('.field-error').exists()).toBe(true);
+    expect(wrapper.find('.field-error').text()).toContain('Please enter a name');
   });
 
   it('should handle form fields for all person properties', async () => {
@@ -124,50 +122,54 @@ describe('PersonEditor', () => {
   it('should delete person', async () => {
     const store = useFamilyTreeStore();
     const initialCount = store.familyTree.persons.length;
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    
+
     const wrapper = mount(PersonEditor, {
       props: {
         isOpen: true,
         personId: 'person1'
       }
     });
-    
+
     await wrapper.vm.$nextTick();
-    
+
+    // First click shows inline confirmation
     const deleteButton = wrapper.find('.delete-btn');
     await deleteButton.trigger('click');
-    
     await wrapper.vm.$nextTick();
-    
+
+    // Confirm via the inline confirm button
+    const confirmButton = wrapper.find('.delete-confirm .delete-btn');
+    await confirmButton.trigger('click');
+    await wrapper.vm.$nextTick();
+
     expect(store.familyTree.persons.length).toBe(initialCount - 1);
     expect(store.familyTree.persons.find(p => p.id === 'person1')).toBeUndefined();
-    
-    confirmSpy.mockRestore();
   });
 
   it('should not delete person if confirmation is cancelled', async () => {
     const store = useFamilyTreeStore();
     const initialCount = store.familyTree.persons.length;
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    
+
     const wrapper = mount(PersonEditor, {
       props: {
         isOpen: true,
         personId: 'person1'
       }
     });
-    
+
     await wrapper.vm.$nextTick();
-    
+
+    // First click shows inline confirmation
     const deleteButton = wrapper.find('.delete-btn');
     await deleteButton.trigger('click');
-    
     await wrapper.vm.$nextTick();
-    
+
+    // Cancel via the inline cancel button
+    const cancelButton = wrapper.find('.delete-confirm-actions .cancel-btn');
+    await cancelButton.trigger('click');
+    await wrapper.vm.$nextTick();
+
     expect(store.familyTree.persons.length).toBe(initialCount);
-    
-    confirmSpy.mockRestore();
   });
 
   it('should close modal on cancel', async () => {

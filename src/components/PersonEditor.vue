@@ -9,7 +9,8 @@
       <div class="editor-content">
         <div class="form-group">
           <label>Name</label>
-          <input v-model="formData.name" type="text" />
+          <input v-model="formData.name" type="text" @input="validationError = ''" />
+          <div v-if="validationError" class="field-error">{{ validationError }}</div>
         </div>
         
         <div class="form-group">
@@ -69,21 +70,37 @@
               <option value="child">Child</option>
               <option value="spouse">Spouse</option>
             </select>
-            <select v-model="newRelationshipPersonId">
-              <option value="">Select person</option>
-              <option v-for="p in availablePersons" :key="p.id" :value="p.id">
-                {{ p.name }}
-              </option>
-            </select>
+            <div class="person-select-wrapper">
+              <input
+                v-model="personSearchQuery"
+                type="text"
+                placeholder="Search person..."
+                class="person-search-input"
+              />
+              <select v-model="newRelationshipPersonId" size="4" class="person-select">
+                <option value="">Select person</option>
+                <option v-for="p in filteredPersons" :key="p.id" :value="p.id">
+                  {{ p.name }}
+                </option>
+              </select>
+            </div>
             <button @click="addRelationship" :disabled="!canAddRelationship" class="add-btn">
               Add
             </button>
           </div>
         </div>
         
-        <div class="form-actions">
+        <div v-if="showDeleteConfirm" class="delete-confirm">
+          <p>Are you sure you want to delete this person?</p>
+          <div class="delete-confirm-actions">
+            <button @click="confirmDeletePerson" class="delete-btn">Yes, Delete</button>
+            <button @click="showDeleteConfirm = false" class="cancel-btn">Cancel</button>
+          </div>
+        </div>
+
+        <div v-else class="form-actions">
           <button @click="save" class="save-btn">{{ personId ? 'Save' : 'Add Person' }}</button>
-          <button v-if="personId" @click="deletePerson" class="delete-btn">Delete Person</button>
+          <button v-if="personId" @click="showDeleteConfirm = true" class="delete-btn">Delete Person</button>
           <button @click="close" class="cancel-btn">Cancel</button>
         </div>
       </div>
@@ -119,6 +136,9 @@ const formData = ref({
 
 const newRelationshipType = ref<RelationshipType | ''>('');
 const newRelationshipPersonId = ref('');
+const personSearchQuery = ref('');
+const validationError = ref('');
+const showDeleteConfirm = ref(false);
 
 const person = computed(() => {
   if (!props.personId) return null;
@@ -130,11 +150,22 @@ const availablePersons = computed(() => {
   return store.familyTree.persons.filter(p => p.id !== props.personId);
 });
 
+const filteredPersons = computed(() => {
+  const q = personSearchQuery.value.toLowerCase().trim();
+  if (!q) return availablePersons.value;
+  return availablePersons.value.filter(p => p.name.toLowerCase().includes(q));
+});
+
 const canAddRelationship = computed(() => {
   return newRelationshipType.value !== '' && newRelationshipPersonId.value !== '';
 });
 
 watch(() => props.personId, (newId) => {
+  validationError.value = '';
+  showDeleteConfirm.value = false;
+  personSearchQuery.value = '';
+  newRelationshipType.value = '';
+  newRelationshipPersonId.value = '';
   if (newId && person.value) {
     formData.value = {
       name: person.value.name,
@@ -146,7 +177,6 @@ watch(() => props.personId, (newId) => {
       occupation: person.value.occupation || ''
     };
   } else {
-    // Reset form for new person
     formData.value = {
       name: '',
       birthDate: '',
@@ -166,17 +196,16 @@ function getPersonName(personId: string): string {
 
 function addRelationship() {
   if (!props.personId || !canAddRelationship.value) return;
-  
-  // Make sure person exists (should always be true if personId is set)
   if (!person.value) return;
-  
+
   store.addRelationship(props.personId, {
     type: newRelationshipType.value as RelationshipType,
     personId: newRelationshipPersonId.value
   });
-  
+
   newRelationshipType.value = '';
   newRelationshipPersonId.value = '';
+  personSearchQuery.value = '';
 }
 
 function removeRelationship(index: number) {
@@ -186,9 +215,10 @@ function removeRelationship(index: number) {
 
 function save() {
   if (!formData.value.name.trim()) {
-    alert('Please enter a name');
+    validationError.value = 'Please enter a name';
     return;
   }
+  validationError.value = '';
   
   if (props.personId) {
     // Update existing person
@@ -218,12 +248,11 @@ function save() {
   close();
 }
 
-function deletePerson() {
+function confirmDeletePerson() {
   if (!props.personId) return;
-  if (confirm('Are you sure you want to delete this person?')) {
-    store.removePerson(props.personId);
-    close();
-  }
+  store.removePerson(props.personId);
+  showDeleteConfirm.value = false;
+  close();
 }
 
 function close() {
@@ -367,14 +396,69 @@ function close() {
   padding: 20px;
 }
 
+.field-error {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #c62828;
+}
+
 .add-relationship {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: flex-start;
 }
 
-.add-relationship select {
+.add-relationship > select {
+  flex-shrink: 0;
+}
+
+.person-select-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   flex: 1;
+  min-width: 0;
+}
+
+.person-search-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.person-search-input:focus {
+  outline: none;
+  border-color: #2196f3;
+}
+
+.person-select {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.delete-confirm {
+  margin-top: 24px;
+  padding: 16px;
+  background: #fff3f3;
+  border: 1px solid #ef9a9a;
+  border-radius: 4px;
+}
+
+.delete-confirm p {
+  margin: 0 0 12px 0;
+  color: #b71c1c;
+  font-weight: 500;
+}
+
+.delete-confirm-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .add-btn {

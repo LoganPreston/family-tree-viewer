@@ -222,17 +222,6 @@ export function parseGedcom(content: string): FamilyTree {
     }
   }
   
-  // Debug logging to verify parsing
-  console.log('Parsed family tree:', {
-    totalPersons: persons.length,
-    personsWithSpouses: persons.filter(p => p.relationships.some(r => r.type === 'spouse')).length,
-    allRelationships: persons.map(p => ({
-      id: p.id,
-      name: p.name,
-      relationships: p.relationships
-    }))
-  });
-  
   return {
     rootPersonId,
     persons

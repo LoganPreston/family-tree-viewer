@@ -87,23 +87,19 @@ async function processFile(file: File) {
     
     if (extension === 'ged') {
       const familyTree = parseGedcom(text);
-      console.log('Parsed GEDCOM:', familyTree);
       if (!familyTree.persons || familyTree.persons.length === 0) {
         error.value = 'No persons found in GEDCOM file';
         return;
       }
       store.loadFamilyTree(familyTree);
-      console.log('Store after load:', store.familyTree);
       emit('loaded');
     } else if (extension === 'json') {
       const familyTree = parseJson(text);
-      console.log('Parsed JSON:', familyTree);
       if (!familyTree.persons || familyTree.persons.length === 0) {
         error.value = 'No persons found in JSON file';
         return;
       }
       store.loadFamilyTree(familyTree);
-      console.log('Store after load:', store.familyTree);
       emit('loaded');
     }
   } catch (err) {
