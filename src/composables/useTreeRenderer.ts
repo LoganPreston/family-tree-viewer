@@ -118,7 +118,10 @@ export function useTreeRenderer(
           console.warn('Link has invalid positions:', d.source.data.id, '->', d.target.data.id);
           return '';
         }
-        return `M${sx},${sy! + NODE_HEIGHT / 2}L${tx},${ty! - NODE_HEIGHT / 2}`;
+        const startY = sy! + NODE_HEIGHT / 2;
+        const endY = ty! - NODE_HEIGHT / 2;
+        const midY = (startY + endY) / 2;
+        return `M${sx},${startY} V${midY} H${tx} V${endY}`;
       })
       .attr('stroke', (d) => isLinkInPath(d.source.data.id, d.target.data.id) ? '#ff9800' : '#ccc')
       .attr('stroke-width', (d) => isLinkInPath(d.source.data.id, d.target.data.id) ? 4 : 2);
@@ -161,7 +164,9 @@ export function useTreeRenderer(
           console.warn('Spouse link has invalid positions:', d.node1.data.id, '->', d.node2.data.id);
           return '';
         }
-        return `M${x1},${y1}L${x2},${y2}`;
+        // Connect the nearest horizontal edges rather than the centers
+        const [left, right] = x1! <= x2! ? [d.node1, d.node2] : [d.node2, d.node1];
+        return `M${left.x! + NODE_WIDTH / 2},${left.y} L${right.x! - NODE_WIDTH / 2},${right.y}`;
       })
       .attr('stroke', (d) => isLinkInPath(d.node1.data.id, d.node2.data.id) ? '#ff9800' : '#999')
       .attr('stroke-width', (d) => isLinkInPath(d.node1.data.id, d.node2.data.id) ? 4 : 2);
