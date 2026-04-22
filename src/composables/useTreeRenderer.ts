@@ -177,7 +177,7 @@ export function useTreeRenderer(
 
     const entered = nodeGroup.enter().append('g').attr('class', 'node-group').style('cursor', 'pointer');
     entered.append('rect').attr('class', 'node').attr('width', NODE_WIDTH).attr('height', NODE_HEIGHT)
-      .attr('rx', 8).attr('x', -NODE_WIDTH / 2).attr('y', -NODE_HEIGHT / 2);
+      .attr('x', -NODE_WIDTH / 2).attr('y', -NODE_HEIGHT / 2);
     entered.append('text').attr('class', 'node-name').attr('x', 0).attr('y', -NODE_HEIGHT / 2 + 25)
       .attr('text-anchor', 'middle').attr('font-size', '14px').attr('font-weight', 'bold');
     entered.append('text').attr('class', 'node-birth').attr('x', 0).attr('text-anchor', 'middle')
@@ -204,6 +204,12 @@ export function useTreeRenderer(
         if (d.data.isNavigationNode) return 2;
         if (isNodeInPath(d.data.id)) return 4;
         return d.data.id === store.selectedPersonId ? 3 : 1;
+      })
+      .attr('rx', (d) => {
+        if (d.data.isNavigationNode) return 8;
+        if (d.data.gender === 'M') return 4;
+        if (d.data.gender === 'F') return NODE_HEIGHT / 2; // pill / oval
+        return 12;
       })
       .on('click', (event: MouseEvent, d) => { event.stopPropagation(); handleNodeClick(d); })
       .on('dblclick', (event: MouseEvent, d) => {
