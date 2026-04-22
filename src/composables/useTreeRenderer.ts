@@ -9,6 +9,7 @@ const NODE_WIDTH = 180;
 const NODE_HEIGHT = 120;
 const NODE_SPACING = 20;
 const LEVEL_SPACING = 100;
+const COUPLE_DROP = 28; // px below node bottom for U-shaped spouse connector
 
 function extractYearFromBirthdate(birthDate?: string): number | null {
   if (!birthDate) return null;
@@ -82,55 +83,161 @@ export function useTreeRenderer(
     return store.connectionPath ? store.connectionPath.includes(nodeId) : false;
   }
 
-  function drawLinks(rootNode: d3.HierarchyPointNode<TreeNode>) {
-    if (!g) return;
-    const allLinks = rootNode.links();
-    const nodeMap = new Map<string, d3.HierarchyPointNode<TreeNode>>();
-    rootNode.each((d) => nodeMap.set(d.data.id, d));
+  // Returns a map of coupleId → dropY for every 2-parent couple visible in the tree.
+  // When a person has multiple spouses, each couple gets a progressively deeper drop
+  // (ranked left-to-right by midpoint x) so the U-shapes don't overlap.
+  function buildCoupleDropMap(
+    rootNode: d3.HierarchyPointNode<TreeNode>,
+    nodeMap: Map<string, d3.HierarchyPointNode<TreeNode>>
+  ): Map<string, number> {
+    const coupleInfo = new Map<string, {
+      p1: d3.HierarchyPointNode<TreeNode>;
+      p2: d3.HierarchyPointNode<TreeNode>;
+    }>();
 
-    const links: Array<{ source: d3.HierarchyPointNode<TreeNode>; target: d3.HierarchyPointNode<TreeNode> }> = [];
-    for (const link of allLinks) {
-      if (link.source.data.id === '__wrapper_root__' && link.target.data.id === '__wrapper_root__') continue;
-      if (link.target.data.id === '__wrapper_root__') {
-        const wrapperNode = link.target;
-        if (wrapperNode.children?.length) {
-          const actualRoot = wrapperNode.children.find((c: any) => c.data.id === store.currentRootPersonId);
-          if (actualRoot) { links.push({ source: link.source, target: actualRoot }); continue; }
-        }
+    rootNode.each(child => {
+      if (child.data.id === '__wrapper_root__' || child.data.isInvisibleLink ||
+          child.data.isNavigationNode || !child.parent) return;
+      if (isNaN(child.x) || isNaN(child.y)) return;
+      const person = store.familyTree.persons.find(p => p.id === child.data.id);
+      const vp = (person?.relationships ?? [])
+        .filter(r => r.type === 'parent')
+        .map(r => nodeMap.get(r.personId))
+        .filter((n): n is d3.HierarchyPointNode<TreeNode> =>
+          n !== undefined && !isNaN(n.x!) && !isNaN(n.y!));
+      if (vp.length < 2) return;
+      const cid = [vp[0].data.id, vp[1].data.id].sort().join('|');
+      if (!coupleInfo.has(cid)) coupleInfo.set(cid, { p1: vp[0], p2: vp[1] });
+    });
+
+    // Track which couples each person appears in
+    const personCouples = new Map<string, string[]>();
+    for (const [cid, info] of coupleInfo) {
+      for (const pid of [info.p1.data.id, info.p2.data.id]) {
+        if (!personCouples.has(pid)) personCouples.set(pid, []);
+        personCouples.get(pid)!.push(cid);
       }
-      if (link.source.data.id === '__wrapper_root__') continue;
-      if (link.target.data.isInvisibleLink) continue;
-      links.push({ source: link.source, target: link.target });
     }
 
-    const linkEls = g.selectAll('.link')
-      .data(links, (d: unknown) => {
-        const l = d as typeof links[0];
-        return `${l.source.data.id}-${l.target.data.id}`;
+    // For persons in multiple couples, sort by midpoint x and assign 1-based depth rank
+    const rankMap = new Map<string, number>();
+    for (const [, cids] of personCouples) {
+      const unique = [...new Set(cids)];
+      if (unique.length < 2) continue;
+      unique.sort((a, b) => {
+        const ca = coupleInfo.get(a)!;
+        const cb = coupleInfo.get(b)!;
+        return ((ca.p1.x! + ca.p2.x!) / 2) - ((cb.p1.x! + cb.p2.x!) / 2);
       });
+      unique.forEach((cid, i) => {
+        rankMap.set(cid, Math.max(rankMap.get(cid) ?? 1, i + 1));
+      });
+    }
+
+    const dropMap = new Map<string, number>();
+    for (const [cid, info] of coupleInfo) {
+      const rank = rankMap.get(cid) ?? 1;
+      const baseY = Math.max(info.p1.y!, info.p2.y!) + NODE_HEIGHT / 2;
+      dropMap.set(cid, baseY + COUPLE_DROP * rank);
+    }
+    return dropMap;
+  }
+
+  function drawLinks(rootNode: d3.HierarchyPointNode<TreeNode>) {
+    if (!g) return;
+
+    // All real (non-virtual) visible nodes, keyed by person ID
+    const nodeMap = new Map<string, d3.HierarchyPointNode<TreeNode>>();
+    rootNode.each(d => {
+      if (d.data.id !== '__wrapper_root__' && !d.data.isNavigationNode) {
+        nodeMap.set(d.data.id, d);
+      }
+    });
+
+    const coupleDropMap = buildCoupleDropMap(rootNode, nodeMap);
+
+    interface LinkSpec {
+      id: string;
+      sx: number; sy: number;
+      tx: number; ty: number;
+      childId: string;
+      parentIds: string[];
+    }
+
+    const linkSpecs: LinkSpec[] = [];
+
+    rootNode.each(child => {
+      if (child.data.id === '__wrapper_root__') return;
+      if (child.data.isInvisibleLink) return;
+      if (child.data.isNavigationNode) return;
+      if (!child.parent) return; // D3 root — no link needed
+
+      const tx = child.x, ty = child.y;
+      if (tx === undefined || ty === undefined || isNaN(tx) || isNaN(ty)) return;
+
+      // Biological parents visible in this render
+      const person = store.familyTree.persons.find(p => p.id === child.data.id);
+      const visibleParents = (person?.relationships ?? [])
+        .filter(r => r.type === 'parent')
+        .map(r => nodeMap.get(r.personId))
+        .filter((n): n is d3.HierarchyPointNode<TreeNode> =>
+          n !== undefined && !isNaN(n.x!) && !isNaN(n.y!));
+
+      let sx: number, sy: number, parentIds: string[];
+
+      if (visibleParents.length >= 2) {
+        const [p1, p2] = visibleParents;
+        sx = (p1.x! + p2.x!) / 2;
+        const coupleId = [p1.data.id, p2.data.id].sort().join('|');
+        sy = coupleDropMap.get(coupleId) ??
+          (Math.max(p1.y!, p2.y!) + NODE_HEIGHT / 2 + COUPLE_DROP);
+        parentIds = [p1.data.id, p2.data.id];
+
+      } else if (visibleParents.length === 1) {
+        sx = visibleParents[0].x!;
+        sy = visibleParents[0].y! + NODE_HEIGHT / 2;
+        parentIds = [visibleParents[0].data.id];
+      } else {
+        // No biological parents in view — fall back to D3 hierarchy parent (e.g. nav node above root)
+        const p = child.parent;
+        if (p.data.id === '__wrapper_root__' || isNaN(p.x!) || isNaN(p.y!)) return;
+        sx = p.x!;
+        sy = p.y! + NODE_HEIGHT / 2;
+        parentIds = [p.data.id];
+      }
+
+      linkSpecs.push({
+        id: `${[...parentIds].sort().join(',')}->${child.data.id}`,
+        sx, sy,
+        tx, ty: ty - NODE_HEIGHT / 2,
+        childId: child.data.id,
+        parentIds
+      });
+    });
+
+    // Parent-child lines
+    const linkEls = g.selectAll('.link')
+      .data(linkSpecs, (d: unknown) => (d as LinkSpec).id);
     linkEls.exit().remove();
-    const entered = linkEls.enter().append('path').attr('class', 'link').attr('fill', 'none').attr('stroke', '#ccc').attr('stroke-width', 2);
-    linkEls.merge(entered as any)
-      .attr('d', (d) => {
-        const { x: sx, y: sy } = d.source;
-        const { x: tx, y: ty } = d.target;
-        if ([sx, sy, tx, ty].some(v => v === undefined || isNaN(v as number))) {
-          console.warn('Link has invalid positions:', d.source.data.id, '->', d.target.data.id);
-          return '';
-        }
-        const startY = sy! + NODE_HEIGHT / 2;
-        const endY = ty! - NODE_HEIGHT / 2;
-        const midY = (startY + endY) / 2;
-        return `M${sx},${startY} V${midY} H${tx} V${endY}`;
+    const lEnter = linkEls.enter().append('path').attr('class', 'link')
+      .attr('fill', 'none').attr('stroke', '#777').attr('stroke-width', 2);
+    linkEls.merge(lEnter as any)
+      .attr('d', d => {
+        const midY = (d.sy + d.ty) / 2;
+        return `M${d.sx},${d.sy} V${midY} H${d.tx} V${d.ty}`;
       })
-      .attr('stroke', (d) => isLinkInPath(d.source.data.id, d.target.data.id) ? '#ff9800' : '#ccc')
-      .attr('stroke-width', (d) => isLinkInPath(d.source.data.id, d.target.data.id) ? 4 : 2);
+      .attr('stroke', d => d.parentIds.some(pid => isLinkInPath(pid, d.childId)) ? '#ff9800' : '#777')
+      .attr('stroke-width', d => d.parentIds.some(pid => isLinkInPath(pid, d.childId)) ? 4 : 2);
+
+    // Remove any stale junction dots from previous renders
+    g.selectAll('.couple-junction').remove();
   }
 
   function drawSpouseLinks(rootNode: d3.HierarchyPointNode<TreeNode>) {
     if (!g) return;
     const nodeMap = new Map<string, d3.HierarchyPointNode<TreeNode>>();
     rootNode.each((d) => { if (!d.data.isNavigationNode) nodeMap.set(d.data.id, d); });
+    const coupleDropMap = buildCoupleDropMap(rootNode, nodeMap);
 
     const spousePairs: Array<{ node1: d3.HierarchyPointNode<TreeNode>; node2: d3.HierarchyPointNode<TreeNode> }> = [];
     rootNode.each((d) => {
@@ -155,7 +262,8 @@ export function useTreeRenderer(
       });
     spouseEls.exit().remove();
     const entered = spouseEls.enter().append('path').attr('class', 'spouse-link').attr('fill', 'none')
-      .attr('stroke', '#999').attr('stroke-width', 2).attr('stroke-dasharray', '5,5').style('opacity', 0.6);
+      .attr('stroke', '#7a6e8a').attr('stroke-width', 1).attr('stroke-dasharray', '8,4')
+      .attr('stroke-linecap', 'round').style('opacity', 1);
     spouseEls.merge(entered as any)
       .attr('d', (d) => {
         const { x: x1, y: y1 } = d.node1;
@@ -164,11 +272,13 @@ export function useTreeRenderer(
           console.warn('Spouse link has invalid positions:', d.node1.data.id, '->', d.node2.data.id);
           return '';
         }
-        // Connect the nearest horizontal edges rather than the centers
         const [left, right] = x1! <= x2! ? [d.node1, d.node2] : [d.node2, d.node1];
-        return `M${left.x! + NODE_WIDTH / 2},${left.y} L${right.x! - NODE_WIDTH / 2},${right.y}`;
+        const coupleId = [d.node1.data.id, d.node2.data.id].sort().join('|');
+        const dropY = coupleDropMap.get(coupleId) ??
+          (Math.max(left.y!, right.y!) + NODE_HEIGHT / 2 + COUPLE_DROP);
+        return `M${left.x!},${left.y! + NODE_HEIGHT / 2} V${dropY} H${right.x!} V${right.y! + NODE_HEIGHT / 2}`;
       })
-      .attr('stroke', (d) => isLinkInPath(d.node1.data.id, d.node2.data.id) ? '#ff9800' : '#999')
+      .attr('stroke', (d) => isLinkInPath(d.node1.data.id, d.node2.data.id) ? '#ff9800' : '#7a6e8a')
       .attr('stroke-width', (d) => isLinkInPath(d.node1.data.id, d.node2.data.id) ? 4 : 2);
   }
 
@@ -203,7 +313,7 @@ export function useTreeRenderer(
       .attr('stroke', (d) => {
         if (d.data.isNavigationNode) return '#ff9800';
         if (isNodeInPath(d.data.id)) return '#ff9800';
-        return d.data.id === store.selectedPersonId ? '#2196f3' : '#999';
+        return d.data.id === store.selectedPersonId ? '#2196f3' : '#777';
       })
       .attr('stroke-width', (d) => {
         if (d.data.isNavigationNode) return 2;
@@ -325,6 +435,8 @@ export function useTreeRenderer(
       .separation((a, b) => {
         if (a.parent !== b.parent) return 1.5;
         if (a.data.id === '__parent_nav__' || b.data.id === '__parent_nav__') return 0.1;
+        // Extra gap between children from different couple origins
+        if (a.data.coupleId && b.data.coupleId && a.data.coupleId !== b.data.coupleId) return 2.5;
         const ap = store.familyTree.persons.find(p => p.id === a.data.id);
         const bp = store.familyTree.persons.find(p => p.id === b.data.id);
         if (ap && bp) {
@@ -420,7 +532,7 @@ export function useTreeRenderer(
       .attr('stroke', (d: any) => {
         const node = d.data as TreeNode;
         if (node.isNavigationNode) return '#ff9800';
-        return node.id === store.selectedPersonId ? '#2196f3' : '#999';
+        return node.id === store.selectedPersonId ? '#2196f3' : '#777';
       })
       .attr('stroke-width', (d: any) => {
         const node = d.data as TreeNode;

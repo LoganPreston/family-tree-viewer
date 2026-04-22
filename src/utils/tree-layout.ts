@@ -14,6 +14,8 @@ export interface TreeNode {
   isNavigationNode?: boolean;
   generation?: number;
   isInvisibleLink?: boolean;
+  /** Sorted parent IDs joined with '|' — used to group siblings by couple origin */
+  coupleId?: string;
 }
 
 // ── Pass 1: build parent→children hierarchy ───────────────────────────────────
@@ -104,6 +106,7 @@ function buildNode(
         if (parents.includes(person.id)) {
           const childNode = buildNode(childId, generation + 1, node, personMap, nodeMap, visited, maxGenerations);
           if (childNode) {
+            childNode.coupleId = [...parents].sort().join('|');
             children.push(childNode);
             childrenAssigned.add(childId);
           }
@@ -111,6 +114,7 @@ function buildNode(
       } else {
         const childNode = buildNode(childId, generation + 1, node, personMap, nodeMap, visited, maxGenerations);
         if (childNode) {
+          childNode.coupleId = [...parents].sort().join('|');
           children.push(childNode);
           childrenAssigned.add(childId);
         }
@@ -118,6 +122,8 @@ function buildNode(
     }
   }
 
+  // Keep children from the same couple adjacent so the layout groups them cleanly
+  children.sort((a, b) => (a.coupleId ?? '').localeCompare(b.coupleId ?? ''));
   node.children = children.length > 0 ? children : undefined;
   return node;
 }

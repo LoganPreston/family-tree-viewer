@@ -105,16 +105,17 @@ onUnmounted(() => {
 
 :deep(.link) {
   fill: none;
-  stroke: #ccc;
+  stroke: #777;
   stroke-width: 2;
 }
 
 :deep(.spouse-link) {
   fill: none;
-  stroke: #999;
-  stroke-width: 2;
-  stroke-dasharray: 5,5;
-  opacity: 0.6;
+  stroke: #7a6e8a;
+  stroke-width: 1;
+  stroke-dasharray: 8,4;
+  stroke-linecap: round;
+  opacity: 1;
 }
 
 :deep(.node) {
