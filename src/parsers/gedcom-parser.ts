@@ -436,15 +436,18 @@ function parseIndividual(record: GedcomRecord): Person | null {
   }
   // Also check child records for RELIGION
   for (const childRecord of record.children) {
-    if (childRecord.lines.some(l => l.tag === 'RELIGION')) {
-      // Check for PLACE in child record's lines
+    if (childRecord.type === 'RELIGION' || childRecord.lines.some(l => l.tag === 'RELIGION')) {
       const placeLine = childRecord.lines.find(l => l.tag === 'PLACE');
       if (placeLine?.value) {
         person.religion = placeLine.value;
       } else {
-        const religionLine = childRecord.lines.find(l => l.tag === 'RELIGION');
-        if (religionLine?.value && !person.religion) {
-          person.religion = religionLine.value;
+        for (const nested of childRecord.children) {
+          const nestedPlace = nested.lines.find(l => l.tag === 'PLACE');
+          if (nestedPlace?.value) { person.religion = nestedPlace.value; break; }
+        }
+        if (!person.religion) {
+          const religionLine = childRecord.lines.find(l => l.tag === 'RELIGION');
+          if (religionLine?.value) person.religion = religionLine.value;
         }
       }
     }
@@ -476,15 +479,19 @@ function parseIndividual(record: GedcomRecord): Person | null {
   }
   // Also check child records for OCCUPATION
   for (const childRecord of record.children) {
-    if (childRecord.lines.some(l => l.tag === 'OCCUPATION')) {
-      // Check for PLACE in child record's lines
+    if (childRecord.type === 'OCCUPATION' || childRecord.lines.some(l => l.tag === 'OCCUPATION')) {
       const placeLine = childRecord.lines.find(l => l.tag === 'PLACE');
       if (placeLine?.value) {
         person.occupation = placeLine.value;
       } else {
-        const occupationLine = childRecord.lines.find(l => l.tag === 'OCCUPATION');
-        if (occupationLine?.value && !person.occupation) {
-          person.occupation = occupationLine.value;
+        // PLACE may be a grandchild when DATE precedes it at the same level
+        for (const nested of childRecord.children) {
+          const nestedPlace = nested.lines.find(l => l.tag === 'PLACE');
+          if (nestedPlace?.value) { person.occupation = nestedPlace.value; break; }
+        }
+        if (!person.occupation) {
+          const occupationLine = childRecord.lines.find(l => l.tag === 'OCCUPATION');
+          if (occupationLine?.value) person.occupation = occupationLine.value;
         }
       }
     }
@@ -529,6 +536,18 @@ function parseIndividual(record: GedcomRecord): Person | null {
           person.events = [];
         }
         person.events.push(event);
+      }
+    }
+
+    // Parse underscore-prefixed custom tags (e.g. _MEDICAL) as events
+    if (childRecord.type?.startsWith('_')) {
+      const tagLine = childRecord.lines[0];
+      if (tagLine?.value) {
+        if (!person.events) person.events = [];
+        person.events.push({
+          type: childRecord.type.replace(/^_/, ''),
+          note: tagLine.value
+        });
       }
     }
   }

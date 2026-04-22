@@ -11,6 +11,7 @@ export interface Event {
   type: string;
   date?: string;
   place?: string;
+  note?: string;
 }
 
 export interface Person {

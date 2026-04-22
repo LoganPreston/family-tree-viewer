@@ -47,6 +47,18 @@
           <input v-model="formData.occupation" type="text" placeholder="e.g., Homemaker" />
         </div>
         
+        <div v-if="person && person.events && person.events.length > 0" class="form-group">
+          <label>Events</label>
+          <div class="events-list">
+            <div v-for="(event, index) in person.events" :key="index" class="event-item">
+              <span class="event-type">{{ event.type }}</span>
+              <span v-if="event.date" class="event-date">{{ event.date }}</span>
+              <span v-if="event.place" class="event-place">{{ event.place }}</span>
+              <span v-if="event.note" class="event-note">{{ event.note }}</span>
+            </div>
+          </div>
+        </div>
+
         <div v-if="person" class="form-group">
           <label>Relationships</label>
           <div class="relationships-list">
@@ -348,6 +360,47 @@ function close() {
 .form-group select:focus {
   outline: none;
   border-color: #2196f3;
+}
+
+.events-list {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.event-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #eee;
+  font-size: 13px;
+}
+
+.event-item:last-child {
+  border-bottom: none;
+}
+
+.event-type {
+  font-weight: 500;
+  color: #333;
+  min-width: 120px;
+}
+
+.event-date {
+  color: #666;
+}
+
+.event-place {
+  color: #888;
+  font-style: italic;
+}
+
+.event-note {
+  color: #555;
+  flex-basis: 100%;
 }
 
 .relationships-list {
