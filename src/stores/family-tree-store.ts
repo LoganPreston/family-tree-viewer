@@ -1,8 +1,10 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import type { FamilyTree, Person, Relationship, RelationshipType } from '../types/family-tree';
 import { isDescendant } from '../utils/path-finder';
 import { findRootPersonId } from '../utils/find-root-person';
+
+const STORAGE_KEY = 'family-tree-data';
 
 export const useFamilyTreeStore = defineStore('familyTree', () => {
   const familyTree = ref<FamilyTree>({
@@ -231,7 +233,27 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
   function clearConnectionPath() {
     connectionPath.value = null;
   }
-  
+
+  function clearPersistedData() {
+    localStorage.removeItem(STORAGE_KEY);
+    loadFamilyTree({ rootPersonId: undefined, persons: [] });
+  }
+
+  // Hydrate from localStorage on init
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try {
+      loadFamilyTree(JSON.parse(saved) as FamilyTree);
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+
+  // Persist on every change
+  watch(familyTree, (val) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(val));
+  }, { deep: true });
+
   return {
     familyTree,
     selectedPersonId,
@@ -257,7 +279,8 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
     resetView,
     goBack,
     setConnectionPath,
-    clearConnectionPath
+    clearConnectionPath,
+    clearPersistedData
   };
 });
 

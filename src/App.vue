@@ -29,6 +29,13 @@
         >
           Upload New File
         </button>
+        <button
+          v-if="hasData"
+          @click="store.clearPersistedData()"
+          class="clear-data-btn"
+        >
+          Clear Data
+        </button>
         <button 
           v-if="hasData" 
           @click="exportTree" 
@@ -1022,6 +1029,21 @@ body {
 
 .export-svg-btn:hover {
   background: #455a64;
+}
+
+.clear-data-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  background: #e53935;
+  color: white;
+}
+
+.clear-data-btn:hover {
+  background: #c62828;
 }
 
 @media print {
