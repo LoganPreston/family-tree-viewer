@@ -68,3 +68,36 @@ export function findShortestPath(
   return null;
 }
 
+/**
+ * Returns true if potentialDescendantId is reachable from ancestorId
+ * by following only 'child' relationship edges.
+ */
+export function isDescendant(
+  familyTree: FamilyTree,
+  ancestorId: string,
+  potentialDescendantId: string
+): boolean {
+  if (ancestorId === potentialDescendantId) return true;
+  const personMap = new Map<string, { relationships: { type: string; personId: string }[] }>();
+  for (const p of familyTree.persons) personMap.set(p.id, p);
+
+  const visited = new Set<string>();
+  const queue = [ancestorId];
+  visited.add(ancestorId);
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const person = personMap.get(current);
+    if (!person) continue;
+    for (const rel of person.relationships) {
+      if (rel.type !== 'child') continue;
+      if (rel.personId === potentialDescendantId) return true;
+      if (!visited.has(rel.personId)) {
+        visited.add(rel.personId);
+        queue.push(rel.personId);
+      }
+    }
+  }
+  return false;
+}
+

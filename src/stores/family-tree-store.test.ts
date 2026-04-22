@@ -315,6 +315,60 @@ describe('family-tree-store', () => {
       const totalAfter = store.familyTree.persons.reduce((n, p) => n + p.relationships.length, 0);
       expect(totalAfter).toBe(totalBefore);
     });
+
+    it('rejects a parent relationship that would create a direct cycle', () => {
+      const store = useFamilyTreeStore();
+      store.loadFamilyTree({
+        rootPersonId: 'a',
+        persons: [
+          { id: 'a', name: 'A', relationships: [{ type: 'child', personId: 'b' }], events: [] },
+          { id: 'b', name: 'B', relationships: [{ type: 'parent', personId: 'a' }], events: [] }
+        ]
+      });
+
+      // Trying to make A a parent of itself via: add parent A to B ... wait
+      // A → child → B. Adding "parent: A" to A would require A to be parent of A.
+      // More correct test: try to add B as parent of A (B is already child of A → cycle)
+      const result = store.addRelationship('a', { type: 'parent', personId: 'b' });
+      expect(result).toBe(false);
+      expect(store.familyTree.persons.find(p => p.id === 'a')!.relationships.some(
+        r => r.type === 'parent' && r.personId === 'b'
+      )).toBe(false);
+    });
+
+    it('rejects a child relationship that would create a cycle in a chain A→B→C', () => {
+      const store = useFamilyTreeStore();
+      store.loadFamilyTree({
+        rootPersonId: 'a',
+        persons: [
+          { id: 'a', name: 'A', relationships: [{ type: 'child', personId: 'b' }], events: [] },
+          { id: 'b', name: 'B', relationships: [{ type: 'parent', personId: 'a' }, { type: 'child', personId: 'c' }], events: [] },
+          { id: 'c', name: 'C', relationships: [{ type: 'parent', personId: 'b' }], events: [] }
+        ]
+      });
+
+      // Adding C as child of A would not be cyclic, but adding A as child of C would be.
+      // Try adding A as child of C (C is a descendant of A → adding A as C's child = cycle)
+      const result = store.addRelationship('c', { type: 'child', personId: 'a' });
+      expect(result).toBe(false);
+    });
+
+    it('allows a valid non-cyclic parent relationship', () => {
+      const store = useFamilyTreeStore();
+      store.loadFamilyTree({
+        rootPersonId: 'a',
+        persons: [
+          { id: 'a', name: 'A', relationships: [], events: [] },
+          { id: 'b', name: 'B', relationships: [], events: [] }
+        ]
+      });
+
+      const result = store.addRelationship('b', { type: 'parent', personId: 'a' });
+      expect(result).toBe(true);
+      expect(store.familyTree.persons.find(p => p.id === 'b')!.relationships.some(
+        r => r.type === 'parent' && r.personId === 'a'
+      )).toBe(true);
+    });
   });
 
   // ── removePerson edge cases ─────────────────────────────────────────────────

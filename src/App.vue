@@ -57,9 +57,16 @@
         >
           Clear Highlight
         </button>
-        <button 
-          v-if="hasData" 
-          @click="showAddPerson = true" 
+        <button
+          v-if="hasData"
+          @click="treeViewerRef?.exportSvg()"
+          class="export-svg-btn"
+        >
+          Export SVG
+        </button>
+        <button
+          v-if="hasData"
+          @click="showAddPerson = true"
           class="add-person-btn"
         >
           Add Person
@@ -68,13 +75,18 @@
     </header>
     
     <main class="app-main">
-      <FileUpload 
-        v-if="!hasData" 
-        @loaded="handleFileLoaded" 
-      />
+      <div v-if="!hasData" class="empty-state-container">
+        <FileUpload @loaded="handleFileLoaded" />
+        <div class="blank-start">
+          <span class="blank-start-divider">or</span>
+          <button class="blank-start-btn" @click="showAddPerson = true">
+            Start with a blank tree
+          </button>
+        </div>
+      </div>
       
       <div v-else class="tree-container">
-        <TreeViewer />
+        <TreeViewer ref="treeViewerRef" />
       </div>
     </main>
     
@@ -245,6 +257,7 @@ import { downloadJson } from './utils/json-exporter';
 import { findShortestPath } from './utils/path-finder';
 
 const store = useFamilyTreeStore();
+const treeViewerRef = ref<InstanceType<typeof TreeViewer> | null>(null);
 const showAddPerson = ref(false);
 const showUpload = ref(false);
 const showSearch = ref(false);
@@ -956,6 +969,79 @@ body {
   border: 1px solid #ef5350;
   color: #c62828;
   text-align: center;
+}
+
+.empty-state-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.blank-start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.blank-start-divider {
+  color: #999;
+  font-size: 14px;
+  margin-top: 16px;
+}
+
+.blank-start-btn {
+  background: white;
+  color: #2196f3;
+  border: 2px solid #2196f3;
+  padding: 10px 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.blank-start-btn:hover {
+  background: #e3f2fd;
+}
+
+.export-svg-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  background: #607d8b;
+  color: white;
+}
+
+.export-svg-btn:hover {
+  background: #455a64;
+}
+
+@media print {
+  .app-header,
+  .upload-modal-overlay,
+  .search-modal-overlay,
+  .connection-modal-overlay {
+    display: none !important;
+  }
+
+  .app-main {
+    padding: 0;
+    height: 100vh;
+  }
+
+  .tree-container {
+    border-radius: 0;
+    box-shadow: none;
+    height: 100vh;
+  }
 }
 </style>
 

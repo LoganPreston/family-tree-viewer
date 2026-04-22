@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import type { FamilyTree, Person, Relationship, RelationshipType } from '../types/family-tree';
+import { isDescendant } from '../utils/path-finder';
+import { findRootPersonId } from '../utils/find-root-person';
 
 export const useFamilyTreeStore = defineStore('familyTree', () => {
   const familyTree = ref<FamilyTree>({
@@ -32,8 +34,9 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
       currentRootPersonId.value = tree.rootPersonId;
       selectedPersonId.value = tree.rootPersonId;
     } else if (tree.persons.length > 0) {
-      currentRootPersonId.value = tree.persons[0].id;
-      selectedPersonId.value = tree.persons[0].id;
+      const rootId = findRootPersonId(tree.persons)!;
+      currentRootPersonId.value = rootId;
+      selectedPersonId.value = rootId;
     } else {
       currentRootPersonId.value = undefined;
       selectedPersonId.value = null;
@@ -107,9 +110,22 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
     }
   }
   
-  function addRelationship(personId: string, relationship: Relationship) {
+  function addRelationship(personId: string, relationship: Relationship): boolean {
     const person = familyTree.value.persons.find(p => p.id === personId);
-    if (person) {
+    if (!person) return false;
+
+    // Cycle guard for parent/child relationships
+    if (relationship.type === 'parent') {
+      // personId is getting a new parent (relationship.personId).
+      // Reject if the proposed parent is already a descendant of personId.
+      if (isDescendant(familyTree.value, personId, relationship.personId)) return false;
+    } else if (relationship.type === 'child') {
+      // personId is getting a new child (relationship.personId).
+      // Reject if personId is already a descendant of the proposed child.
+      if (isDescendant(familyTree.value, relationship.personId, personId)) return false;
+    }
+
+    {
       // Check if relationship already exists
       const exists = person.relationships.some(
         rel => rel.type === relationship.type && rel.personId === relationship.personId
@@ -141,6 +157,7 @@ export const useFamilyTreeStore = defineStore('familyTree', () => {
         }
       }
     }
+    return true;
   }
   
   function removeRelationship(personId: string, relationshipIndex: number) {

@@ -56,6 +56,21 @@ function handleResize() {
   if (hasData.value && store.currentRootPersonId) initializeTree();
 }
 
+function exportSvg() {
+  if (!svgRef.value) return;
+  const serializer = new XMLSerializer();
+  const svgStr = serializer.serializeToString(svgRef.value);
+  const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'family-tree.svg';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+defineExpose({ exportSvg });
+
 onMounted(async () => {
   await nextTick();
   if (hasData.value && store.currentRootPersonId) initializeTree();

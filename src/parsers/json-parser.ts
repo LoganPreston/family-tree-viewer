@@ -1,4 +1,5 @@
 import type { FamilyTree, Person } from '../types/family-tree';
+import { findRootPersonId } from '../utils/find-root-person';
 
 export function parseJson(content: string): FamilyTree {
   try {
@@ -26,29 +27,7 @@ export function parseJson(content: string): FamilyTree {
       throw new Error(`Invalid JSON: rootPersonId "${rootPersonId}" not found in persons array`);
     }
     
-    // If no rootPersonId provided, set first person as root (will be overridden by store logic if needed)
-    if (!rootPersonId && persons.length > 0) {
-      // Try to find a person with no parents and has children (true root)
-      const personWithoutParentsWithChildren = persons.find(p => 
-        !p.relationships.some(rel => rel.type === 'parent') &&
-        p.relationships.some(rel => rel.type === 'child')
-      );
-      
-      if (personWithoutParentsWithChildren) {
-        rootPersonId = personWithoutParentsWithChildren.id;
-      } else {
-        // Fallback: find someone with no parents
-        const personWithoutParents = persons.find(p => 
-          !p.relationships.some(rel => rel.type === 'parent')
-        );
-        if (personWithoutParents) {
-          rootPersonId = personWithoutParents.id;
-        } else {
-          // Final fallback: use first person
-          rootPersonId = persons[0].id;
-        }
-      }
-    }
+    if (!rootPersonId) rootPersonId = findRootPersonId(persons);
     
     return {
       rootPersonId,

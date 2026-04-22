@@ -74,17 +74,34 @@ function handleDrop(event: DragEvent) {
 
 async function processFile(file: File) {
   error.value = '';
-  
+
   const extension = file.name.split('.').pop()?.toLowerCase();
-  
+
   if (extension !== 'ged' && extension !== 'json') {
     error.value = 'Please upload a .ged or .json file';
     return;
   }
-  
+
+  const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
+  if (file.size > MAX_SIZE) {
+    error.value = 'File is too large (max 10 MB).';
+    return;
+  }
+
   try {
     const text = await file.text();
-    
+
+    if (extension === 'ged' && !text.trimStart().startsWith('0 HEAD')) {
+      error.value = 'Not a valid GEDCOM file (missing 0 HEAD record).';
+      return;
+    }
+    if (extension === 'json') {
+      try { JSON.parse(text); } catch {
+        error.value = 'Not a valid JSON file.';
+        return;
+      }
+    }
+
     if (extension === 'ged') {
       const familyTree = parseGedcom(text);
       if (!familyTree.persons || familyTree.persons.length === 0) {

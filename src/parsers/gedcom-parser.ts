@@ -1,4 +1,5 @@
 import type { Person, FamilyTree, Gender, Event } from '../types/family-tree';
+import { findRootPersonId } from '../utils/find-root-person';
 
 interface GedcomLine {
   level: number;
@@ -198,32 +199,8 @@ export function parseGedcom(content: string): FamilyTree {
     }
   }
   
-  // Find a person with no parents AND has children (true root of tree)
-  let rootPersonId: string | undefined = undefined;
-  
-  // First, try to find someone with no parent relationships AND has children
-  const personWithoutParentsWithChildren = persons.find(p => 
-    !p.relationships.some(rel => rel.type === 'parent') &&
-    p.relationships.some(rel => rel.type === 'child')
-  );
-  
-  if (personWithoutParentsWithChildren) {
-    rootPersonId = personWithoutParentsWithChildren.id;
-  } else {
-    // Fallback: find someone with no parents (even if no children)
-    const personWithoutParents = persons.find(p => 
-      !p.relationships.some(rel => rel.type === 'parent')
-    );
-    if (personWithoutParents) {
-      rootPersonId = personWithoutParents.id;
-    } else if (persons.length > 0) {
-      // Final fallback: use first person if all have parents
-      rootPersonId = persons[0].id;
-    }
-  }
-  
   return {
-    rootPersonId,
+    rootPersonId: findRootPersonId(persons),
     persons
   };
 }

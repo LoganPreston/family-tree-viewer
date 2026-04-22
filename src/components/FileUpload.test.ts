@@ -145,6 +145,70 @@ describe('FileUpload', () => {
     expect(wrapper.emitted('loaded')).toBeUndefined();
   });
 
+  it('should reject files larger than 10 MB', async () => {
+    const wrapper = mount(FileUpload);
+
+    const bigContent = 'x'.repeat(1); // content doesn't matter — we override size
+    const file = new File([bigContent], 'big.ged', { type: 'text/plain' });
+    Object.defineProperty(file, 'size', { value: 11 * 1024 * 1024 });
+
+    vi.spyOn(File.prototype, 'text').mockResolvedValue(bigContent);
+
+    const fileInput = wrapper.find('input[type="file"]');
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    Object.defineProperty(fileInput.element, 'files', { value: dataTransfer.files, writable: false });
+
+    await fileInput.trigger('change');
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(wrapper.find('.error-message').exists()).toBe(true);
+    expect(wrapper.find('.error-message').text()).toContain('too large');
+    expect(wrapper.emitted('loaded')).toBeUndefined();
+  });
+
+  it('should reject a .ged file missing 0 HEAD', async () => {
+    const wrapper = mount(FileUpload);
+
+    const badContent = 'this is not a GEDCOM file';
+    const file = new File([badContent], 'fake.ged', { type: 'text/plain' });
+
+    vi.spyOn(File.prototype, 'text').mockResolvedValue(badContent);
+
+    const fileInput = wrapper.find('input[type="file"]');
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    Object.defineProperty(fileInput.element, 'files', { value: dataTransfer.files, writable: false });
+
+    await fileInput.trigger('change');
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(wrapper.find('.error-message').exists()).toBe(true);
+    expect(wrapper.find('.error-message').text()).toContain('0 HEAD');
+    expect(wrapper.emitted('loaded')).toBeUndefined();
+  });
+
+  it('should reject a .json file with invalid JSON content', async () => {
+    const wrapper = mount(FileUpload);
+
+    const badContent = 'not json at all {{{';
+    const file = new File([badContent], 'bad.json', { type: 'application/json' });
+
+    vi.spyOn(File.prototype, 'text').mockResolvedValue(badContent);
+
+    const fileInput = wrapper.find('input[type="file"]');
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(file);
+    Object.defineProperty(fileInput.element, 'files', { value: dataTransfer.files, writable: false });
+
+    await fileInput.trigger('change');
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    expect(wrapper.find('.error-message').exists()).toBe(true);
+    expect(wrapper.find('.error-message').text()).toContain('valid JSON');
+    expect(wrapper.emitted('loaded')).toBeUndefined();
+  });
+
   it('should reset state after upload', async () => {
     const wrapper = mount(FileUpload);
     

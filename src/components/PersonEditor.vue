@@ -198,14 +198,20 @@ function addRelationship() {
   if (!props.personId || !canAddRelationship.value) return;
   if (!person.value) return;
 
-  store.addRelationship(props.personId, {
+  const added = store.addRelationship(props.personId, {
     type: newRelationshipType.value as RelationshipType,
     personId: newRelationshipPersonId.value
   });
 
+  if (!added) {
+    validationError.value = 'That relationship would create a cycle.';
+    return;
+  }
+
   newRelationshipType.value = '';
   newRelationshipPersonId.value = '';
   personSearchQuery.value = '';
+  validationError.value = '';
 }
 
 function removeRelationship(index: number) {
