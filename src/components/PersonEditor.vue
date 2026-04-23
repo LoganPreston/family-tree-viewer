@@ -59,6 +59,13 @@
           </div>
         </div>
 
+        <div v-if="person && person.notes && person.notes.length > 0" class="form-group">
+          <label>Notes</label>
+          <div class="notes-list">
+            <div v-for="(note, index) in person.notes" :key="index" class="note-item">{{ note }}</div>
+          </div>
+        </div>
+
         <div v-if="person" class="form-group">
           <label>Relationships</label>
           <div class="relationships-list">
@@ -360,6 +367,31 @@ function close() {
 .form-group select:focus {
   outline: none;
   border-color: #2196f3;
+}
+
+.notes-list {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.note-item {
+  font-size: 13px;
+  color: #444;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.note-item:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 .events-list {

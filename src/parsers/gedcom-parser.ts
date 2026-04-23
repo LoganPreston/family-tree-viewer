@@ -15,21 +15,60 @@ interface GedcomRecord {
   children: GedcomRecord[];
 }
 
+// Assembles a NOTE record's text from its CONCATENATION/CONTINUED sub-records.
+// buildRecordTree puts the first level-1 sub-tag in record.lines and all
+// subsequent ones in record.children (in order), so we read from both.
+function assembleNoteText(record: GedcomRecord): string {
+  let text = '';
+
+  // Inline value on the NOTE line itself (e.g. "0 @x@ NOTE Some text")
+  const noteLine = record.lines.find(l => l.tag === 'NOTE');
+  if (noteLine?.value && !noteLine.value.match(/^@\w+@$/)) {
+    text = noteLine.value;
+  }
+
+  // First CONC/CONCATENATION that landed in record.lines
+  const firstConcat = record.lines.find(l => l.tag === 'CONC' || l.tag === 'CONCATENATION');
+  if (firstConcat?.value) text += firstConcat.value;
+
+  // Remaining sub-records in children, preserving their original order
+  for (const child of record.children) {
+    const line = child.lines[0];
+    if (!line) continue;
+    if (line.tag === 'CONC' || line.tag === 'CONCATENATION') {
+      text += line.value || '';
+    } else if (line.tag === 'CONT' || line.tag === 'CONTINUED') {
+      text += '\n' + (line.value || '');
+    }
+  }
+
+  return text.trim();
+}
+
 export function parseGedcom(content: string): FamilyTree {
   const lines = content.split('\n').map(parseLine).filter(line => line !== null) as GedcomLine[];
   const records = buildRecordTree(lines);
-  
+
+  // Pre-pass: collect top-level NOTE records keyed by xref
+  const noteMap = new Map<string, string>();
+  for (const record of records) {
+    if (record.type === 'NOTE' && record.xref) {
+      const text = assembleNoteText(record);
+      if (text) noteMap.set(record.xref, text);
+    }
+  }
+
   const persons: Person[] = [];
   const personMap = new Map<string, Person>();
   const families: Map<string, { husband?: string; wife?: string; children: string[] }> = new Map();
   // Track which families each person belongs to
   const personFamilySpouse = new Map<string, string[]>(); // personId -> familyIds where they're a spouse
   const personFamilyChild = new Map<string, string[]>(); // personId -> familyIds where they're a child
-  
+
   // First pass: collect all individuals and families
   for (const record of records) {
     if (record.type === 'INDI' || record.type === 'INDIVIDUAL') {
-      const person = parseIndividual(record);
+      const person = parseIndividual(record, noteMap);
       if (person) {
         persons.push(person);
         personMap.set(person.id, person);
@@ -265,7 +304,7 @@ function buildRecordTree(lines: GedcomLine[]): GedcomRecord[] {
   return records;
 }
 
-function parseIndividual(record: GedcomRecord): Person | null {
+function parseIndividual(record: GedcomRecord, noteMap: Map<string, string> = new Map()): Person | null {
   if (!record.xref) return null;
   
   const person: Person = {
@@ -550,8 +589,30 @@ function parseIndividual(record: GedcomRecord): Person | null {
         });
       }
     }
+
+    // Parse NOTE references and inline notes
+    if (childRecord.type === 'NOTE' || childRecord.lines.some(l => l.tag === 'NOTE')) {
+      const noteLine = childRecord.lines.find(l => l.tag === 'NOTE') ?? childRecord.lines[0];
+      if (noteLine?.value) {
+        const refMatch = noteLine.value.match(/^@(\w+)@$/);
+        if (refMatch) {
+          const noteText = noteMap.get(refMatch[1]);
+          if (noteText) {
+            if (!person.notes) person.notes = [];
+            person.notes.push(noteText);
+          }
+        } else {
+          // Inline note — assemble CONC/CONT sub-records from this child record
+          const inlineText = assembleNoteText(childRecord);
+          if (inlineText) {
+            if (!person.notes) person.notes = [];
+            person.notes.push(inlineText);
+          }
+        }
+      }
+    }
   }
-  
+
   return person;
 }
 
