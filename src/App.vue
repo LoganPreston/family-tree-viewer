@@ -113,9 +113,9 @@
       @close="handleAddPersonClose"
     />
     
-    <div v-if="showUpload" class="upload-modal-overlay" @click.self="showUpload = false">
+    <div v-if="showUpload" class="modal-overlay" @click.self="showUpload = false">
       <div class="upload-modal">
-        <div class="upload-modal-header">
+        <div class="modal-header">
           <h2>Upload New Family Tree</h2>
           <button class="close-btn" @click="showUpload = false">&times;</button>
         </div>
@@ -125,9 +125,9 @@
       </div>
     </div>
     
-    <div v-if="showSearch" class="search-modal-overlay" @click.self="handleSearchClose">
+    <div v-if="showSearch" class="modal-overlay" @click.self="handleSearchClose">
       <div class="search-modal">
-        <div class="search-modal-header">
+        <div class="modal-header">
           <h2>Search for Person</h2>
           <button class="close-btn" @click="handleSearchClose">&times;</button>
         </div>
@@ -262,9 +262,9 @@
       </div>
     </div>
     
-    <div v-if="showConnectionModal" class="connection-modal-overlay" @click.self="handleConnectionClose">
+    <div v-if="showConnectionModal" class="modal-overlay" @click.self="handleConnectionClose">
       <div class="connection-modal">
-        <div class="connection-modal-header">
+        <div class="modal-header">
           <h2>Find Connection Between People</h2>
           <button class="close-btn" @click="handleConnectionClose">&times;</button>
         </div>
@@ -365,7 +365,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, type Ref } from 'vue';
 import { useFamilyTreeStore } from './stores/family-tree-store';
 import FileUpload from './components/FileUpload.vue';
 import TreeViewer from './components/TreeViewer.vue';
@@ -431,29 +431,17 @@ const descendantSet = computed(() =>
     : null
 );
 
-const relatedToSearchResults = computed(() => {
-  if (!searchRelatedToQuery.value.trim() || searchRelatedToId.value) return [];
-  const q = searchRelatedToQuery.value.toLowerCase().trim();
-  return store.familyTree.persons
-    .filter(p => p.name.toLowerCase().includes(q))
-    .slice(0, 10);
-});
+function pickerResults(query: Ref<string>, id: Ref<string | null>) {
+  return computed(() => {
+    if (!query.value.trim() || id.value) return [];
+    const q = query.value.toLowerCase().trim();
+    return store.familyTree.persons.filter(p => p.name.toLowerCase().includes(q)).slice(0, 10);
+  });
+}
 
-const ancestorOfSearchResults = computed(() => {
-  if (!searchAncestorOfQuery.value.trim() || searchAncestorOfId.value) return [];
-  const q = searchAncestorOfQuery.value.toLowerCase().trim();
-  return store.familyTree.persons
-    .filter(p => p.name.toLowerCase().includes(q))
-    .slice(0, 10);
-});
-
-const descendantOfSearchResults = computed(() => {
-  if (!searchDescendantOfQuery.value.trim() || searchDescendantOfId.value) return [];
-  const q = searchDescendantOfQuery.value.toLowerCase().trim();
-  return store.familyTree.persons
-    .filter(p => p.name.toLowerCase().includes(q))
-    .slice(0, 10);
-});
+const relatedToSearchResults = pickerResults(searchRelatedToQuery, searchRelatedToId);
+const ancestorOfSearchResults = pickerResults(searchAncestorOfQuery, searchAncestorOfId);
+const descendantOfSearchResults = pickerResults(searchDescendantOfQuery, searchDescendantOfId);
 
 const searchResults = computed(() => {
   const query = searchQuery.value.toLowerCase().trim();
@@ -690,7 +678,10 @@ body {
 .upload-btn,
 .search-btn,
 .connection-btn,
-.clear-highlight-btn {
+.clear-highlight-btn,
+.stats-btn,
+.clear-data-btn,
+.export-svg-btn {
   padding: 8px 16px;
   border: none;
   border-radius: 4px;
@@ -754,12 +745,6 @@ body {
 }
 
 .stats-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
   background: #ff9800;
   color: white;
 }
@@ -792,7 +777,7 @@ body {
   overflow: hidden;
 }
 
-.upload-modal-overlay {
+.modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
@@ -816,19 +801,19 @@ body {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-.upload-modal-header {
+.modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 20px;
 }
 
-.upload-modal-header h2 {
+.modal-header h2 {
   margin: 0;
   color: #333;
 }
 
-.upload-modal-header .close-btn {
+.modal-header .close-btn {
   background: none;
   border: none;
   font-size: 28px;
@@ -843,26 +828,13 @@ body {
   border-radius: 4px;
 }
 
-.upload-modal-header .close-btn:hover {
+.modal-header .close-btn:hover {
   background: #f5f5f5;
   color: #333;
 }
 
 .upload-modal-content {
   padding: 0;
-}
-
-.search-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
 }
 
 .search-modal {
@@ -875,38 +847,6 @@ body {
   display: flex;
   flex-direction: column;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.search-modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.search-modal-header h2 {
-  margin: 0;
-  color: #333;
-}
-
-.search-modal-header .close-btn {
-  background: none;
-  border: none;
-  font-size: 28px;
-  cursor: pointer;
-  color: #666;
-  padding: 0;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-}
-
-.search-modal-header .close-btn:hover {
-  background: #f5f5f5;
-  color: #333;
 }
 
 .search-modal-content {
@@ -1076,19 +1016,6 @@ body {
   color: #666;
 }
 
-.connection-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
 .connection-modal {
   background: white;
   border-radius: 8px;
@@ -1099,38 +1026,6 @@ body {
   display: flex;
   flex-direction: column;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.connection-modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.connection-modal-header h2 {
-  margin: 0;
-  color: #333;
-}
-
-.connection-modal-header .close-btn {
-  background: none;
-  border: none;
-  font-size: 28px;
-  cursor: pointer;
-  color: #666;
-  padding: 0;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-}
-
-.connection-modal-header .close-btn:hover {
-  background: #f5f5f5;
-  color: #333;
 }
 
 .connection-modal-content {
@@ -1347,12 +1242,6 @@ body {
 }
 
 .export-svg-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
   background: #607d8b;
   color: white;
 }
@@ -1362,12 +1251,6 @@ body {
 }
 
 .clear-data-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
   background: #e53935;
   color: white;
 }
@@ -1378,9 +1261,7 @@ body {
 
 @media print {
   .app-header,
-  .upload-modal-overlay,
-  .search-modal-overlay,
-  .connection-modal-overlay {
+  .modal-overlay {
     display: none !important;
   }
 

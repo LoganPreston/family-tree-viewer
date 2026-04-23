@@ -387,12 +387,17 @@ function close() {
   border-color: #2196f3;
 }
 
-.notes-list {
+.notes-list,
+.events-list,
+.relationships-list {
   border: 1px solid #ddd;
   border-radius: 4px;
   padding: 12px;
-  max-height: 200px;
   overflow-y: auto;
+}
+
+.notes-list {
+  max-height: 200px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -413,11 +418,7 @@ function close() {
 }
 
 .events-list {
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 12px;
   max-height: 200px;
-  overflow-y: auto;
 }
 
 .event-item {
@@ -488,12 +489,8 @@ function close() {
 }
 
 .relationships-list {
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  padding: 12px;
   min-height: 100px;
   max-height: 200px;
-  overflow-y: auto;
 }
 
 .relationship-item {
