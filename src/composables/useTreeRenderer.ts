@@ -110,6 +110,20 @@ export function useTreeRenderer(
       if (!coupleInfo.has(cid)) coupleInfo.set(cid, { p1: vp[0], p2: vp[1] });
     });
 
+    // Also register childless spouse pairs so they get consistent rank/depth
+    rootNode.each(d => {
+      if (d.data.isNavigationNode || d.data.id === '__wrapper_root__') return;
+      if (isNaN(d.x) || isNaN(d.y)) return;
+      const person = store.familyTree.persons.find(p => p.id === d.data.id);
+      for (const rel of person?.relationships ?? []) {
+        if (rel.type !== 'spouse') continue;
+        const spouseNode = nodeMap.get(rel.personId);
+        if (!spouseNode || isNaN(spouseNode.x!) || isNaN(spouseNode.y!)) continue;
+        const cid = [d.data.id, rel.personId].sort().join('|');
+        if (!coupleInfo.has(cid)) coupleInfo.set(cid, { p1: d, p2: spouseNode });
+      }
+    });
+
     // Track which couples each person appears in
     const personCouples = new Map<string, string[]>();
     for (const [cid, info] of coupleInfo) {
