@@ -833,7 +833,7 @@ body {
   background: white;
   border-radius: 8px;
   padding: 24px;
-  max-width: 600px;
+  max-width: 650px;
   width: 90%;
   max-height: 90vh;
   display: flex;
@@ -878,6 +878,7 @@ body {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .search-input {
@@ -1003,10 +1004,7 @@ body {
 }
 
 .search-results {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 200px;
-  max-height: 60vh;
+  overflow-y: visible;
 }
 
 .no-results {
