@@ -66,6 +66,16 @@ export function parseGedcom(content: string): FamilyTree {
     }
   }
 
+  // Pre-pass: collect top-level SOURCE records keyed by xref → title
+  const sourceMap = new Map<string, string>();
+  for (const record of records) {
+    if ((record.type === 'SOURCE' || record.type === 'SOUR') && record.xref) {
+      const titleRecord = record.children.find(c => c.type === 'TITLE' || c.type === 'TITL');
+      const title = titleRecord?.lines[0]?.value;
+      if (title) sourceMap.set(record.xref, title);
+    }
+  }
+
   const persons: Person[] = [];
   const personMap = new Map<string, Person>();
   const families: Map<string, { husband?: string; wife?: string; children: string[] }> = new Map();
@@ -74,7 +84,7 @@ export function parseGedcom(content: string): FamilyTree {
 
   for (const record of records) {
     if (record.type === 'INDI' || record.type === 'INDIVIDUAL') {
-      const person = parseIndividual(record, noteMap);
+      const person = parseIndividual(record, noteMap, sourceMap);
       if (person) {
         persons.push(person);
         personMap.set(person.id, person);
@@ -208,7 +218,7 @@ function parseLine(line: string): GedcomLine | null {
   };
 }
 
-function parseIndividual(record: GedcomRecord, noteMap: Map<string, string> = new Map()): Person | null {
+function parseIndividual(record: GedcomRecord, noteMap: Map<string, string> = new Map(), sourceMap: Map<string, string> = new Map()): Person | null {
   if (!record.xref) return null;
 
   const person: Person = { id: record.xref, name: '', relationships: [], events: [] };
@@ -237,6 +247,12 @@ function parseIndividual(record: GedcomRecord, noteMap: Map<string, string> = ne
     person.gender = (val === 'M' ? 'M' : val === 'F' ? 'F' : 'U') as Gender;
   }
 
+  function resolveSource(val: string | undefined): string | undefined {
+    if (!val) return undefined;
+    const ref = val.match(/^@(\w+)@$/);
+    return ref ? (sourceMap.get(ref[1]) ?? val) : val;
+  }
+
   // Recursively finds the first DATE value in a record tree (handles nested DATE structures)
   function findDateValue(r: GedcomRecord): string | undefined {
     if (r.lines[0]?.tag === 'DATE' && r.lines[0]?.value) return r.lines[0].value;
@@ -255,7 +271,7 @@ function parseIndividual(record: GedcomRecord, noteMap: Map<string, string> = ne
     const placeRecord = birtRecord.children.find(c => c.type === 'PLACE');
     if (placeRecord) person.birthPlace = placeRecord.lines[0]?.value;
     const sourRecord = birtRecord.children.find(c => c.type === 'SOURCE' || c.type === 'SOUR');
-    if (sourRecord) person.birthSource = sourRecord.lines[0]?.value;
+    if (sourRecord) person.birthSource = resolveSource(sourRecord.lines[0]?.value);
   }
 
   // Non-standard direct birth/death date tags
@@ -272,7 +288,7 @@ function parseIndividual(record: GedcomRecord, noteMap: Map<string, string> = ne
     const placeRecord = deatRecord.children.find(c => c.type === 'PLACE');
     if (placeRecord) person.deathPlace = placeRecord.lines[0]?.value;
     const sourRecord = deatRecord.children.find(c => c.type === 'SOURCE' || c.type === 'SOUR');
-    if (sourRecord) person.deathSource = sourRecord.lines[0]?.value;
+    if (sourRecord) person.deathSource = resolveSource(sourRecord.lines[0]?.value);
   }
 
   // Religion
@@ -300,7 +316,7 @@ function parseIndividual(record: GedcomRecord, noteMap: Map<string, string> = ne
       const placeRecord = childRecord.children.find(c => c.type === 'PLACE');
       if (placeRecord) event.place = placeRecord.lines[0]?.value;
       const sourRecord = childRecord.children.find(c => c.type === 'SOURCE' || c.type === 'SOUR');
-      if (sourRecord) event.source = sourRecord.lines[0]?.value;
+      if (sourRecord) event.source = resolveSource(sourRecord.lines[0]?.value);
       if (event.type) person.events!.push(event);
     }
 
