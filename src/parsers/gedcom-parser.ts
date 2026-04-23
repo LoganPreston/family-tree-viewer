@@ -15,30 +15,38 @@ interface GedcomRecord {
   children: GedcomRecord[];
 }
 
-// Assembles a NOTE record's text from its CONCATENATION/CONTINUED sub-records.
-// buildRecordTree puts the first level-1 sub-tag in record.lines and all
-// subsequent ones in record.children (in order), so we read from both.
-function assembleNoteText(record: GedcomRecord): string {
-  let text = '';
+function buildRecordTree(lines: GedcomLine[]): GedcomRecord[] {
+  const records: GedcomRecord[] = [];
+  const stack: GedcomRecord[] = [];
 
-  // Inline value on the NOTE line itself (e.g. "0 @x@ NOTE Some text")
-  const noteLine = record.lines.find(l => l.tag === 'NOTE');
-  if (noteLine?.value && !noteLine.value.match(/^@\w+@$/)) {
-    text = noteLine.value;
+  for (const line of lines) {
+    const record: GedcomRecord = { type: line.tag, xref: line.xref, lines: [line], children: [] };
+    if (line.level === 0) {
+      records.push(record);
+      stack[0] = record;
+      stack.length = 1;
+    } else {
+      stack[line.level - 1]?.children.push(record);
+      stack[line.level] = record;
+      stack.length = line.level + 1;
+    }
   }
 
-  // First CONC/CONCATENATION that landed in record.lines
-  const firstConcat = record.lines.find(l => l.tag === 'CONC' || l.tag === 'CONCATENATION');
-  if (firstConcat?.value) text += firstConcat.value;
+  return records;
+}
 
-  // Remaining sub-records in children, preserving their original order
+// Assembles note text from a NOTE record's inline value and CONC/CONT children.
+function assembleNoteText(record: GedcomRecord): string {
+  let text = record.lines[0]?.value || '';
+  if (text.match(/^@\w+@$/)) text = '';
+
   for (const child of record.children) {
-    const line = child.lines[0];
-    if (!line) continue;
-    if (line.tag === 'CONC' || line.tag === 'CONCATENATION') {
-      text += line.value || '';
-    } else if (line.tag === 'CONT' || line.tag === 'CONTINUED') {
-      text += '\n' + (line.value || '');
+    const tag = child.lines[0]?.tag;
+    const val = child.lines[0]?.value || '';
+    if (tag === 'CONC' || tag === 'CONCATENATION') {
+      text += val;
+    } else if (tag === 'CONT' || tag === 'CONTINUED') {
+      text += '\n' + val;
     }
   }
 
@@ -61,125 +69,88 @@ export function parseGedcom(content: string): FamilyTree {
   const persons: Person[] = [];
   const personMap = new Map<string, Person>();
   const families: Map<string, { husband?: string; wife?: string; children: string[] }> = new Map();
-  // Track which families each person belongs to
-  const personFamilySpouse = new Map<string, string[]>(); // personId -> familyIds where they're a spouse
-  const personFamilyChild = new Map<string, string[]>(); // personId -> familyIds where they're a child
+  const personFamilySpouse = new Map<string, string[]>();
+  const personFamilyChild = new Map<string, string[]>();
 
-  // First pass: collect all individuals and families
   for (const record of records) {
     if (record.type === 'INDI' || record.type === 'INDIVIDUAL') {
       const person = parseIndividual(record, noteMap);
       if (person) {
         persons.push(person);
         personMap.set(person.id, person);
-        
-        // Track FAMILY_SPOUSE and FAMILY_CHILD references
+
         const spouseFamilies: string[] = [];
         const childFamilies: string[] = [];
-        
-        // Check direct lines
-        for (const line of record.lines) {
-          if (line.tag === 'FAMILY_SPOUSE' && line.value) {
-            const familyId = line.value.replace(/@/g, '');
-            spouseFamilies.push(familyId);
-          } else if (line.tag === 'FAMILY_CHILD' && line.value) {
-            const familyId = line.value.replace(/@/g, '');
-            childFamilies.push(familyId);
+
+        for (const child of record.children) {
+          const val = child.lines[0]?.value?.replace(/@/g, '');
+          if (!val) continue;
+          if (child.type === 'FAMS' || child.type === 'FAMILY_SPOUSE') {
+            spouseFamilies.push(val);
+          } else if (child.type === 'FAMC' || child.type === 'FAMILY_CHILD') {
+            childFamilies.push(val);
           }
         }
-        
-        // Check nested child records
-        for (const childRecord of record.children) {
-          if (childRecord.type === 'FAMILY_SPOUSE' || childRecord.lines.some(l => l.tag === 'FAMILY_SPOUSE')) {
-            const familyId = findRelationshipId(childRecord);
-            if (familyId) {
-              spouseFamilies.push(familyId);
-            }
-          } else if (childRecord.type === 'FAMILY_CHILD' || childRecord.lines.some(l => l.tag === 'FAMILY_CHILD')) {
-            const familyId = findRelationshipId(childRecord);
-            if (familyId) {
-              childFamilies.push(familyId);
-            }
-          }
-        }
-        
-        if (spouseFamilies.length > 0) {
-          personFamilySpouse.set(person.id, spouseFamilies);
-        }
-        if (childFamilies.length > 0) {
-          personFamilyChild.set(person.id, childFamilies);
-        }
+
+        if (spouseFamilies.length > 0) personFamilySpouse.set(person.id, spouseFamilies);
+        if (childFamilies.length > 0) personFamilyChild.set(person.id, childFamilies);
       }
     } else if (record.type === 'FAM' || record.type === 'FAMILY') {
-      // Standard GEDCOM family records (support both FAM and FAMILY)
       const family = parseFamily(record);
       if (family && record.xref) {
         families.set(record.xref, family);
       }
     }
   }
-  
-  // Second pass: process relationships
-  // Handle standard FAM records
+
+  // Second pass: resolve relationships from FAM records
   for (const [, family] of families.entries()) {
     if (family.husband) {
       const husband = personMap.get(family.husband);
       if (husband && family.wife) {
         addRelationshipIfNotExists(husband, { type: 'spouse', personId: family.wife });
         const wife = personMap.get(family.wife);
-        if (wife) {
-          addRelationshipIfNotExists(wife, { type: 'spouse', personId: family.husband });
-        }
+        if (wife) addRelationshipIfNotExists(wife, { type: 'spouse', personId: family.husband });
       }
       if (husband) {
-        family.children.forEach(childId => {
+        for (const childId of family.children) {
           addRelationshipIfNotExists(husband, { type: 'child', personId: childId });
           const child = personMap.get(childId);
-          if (child && family.husband) {
-            addRelationshipIfNotExists(child, { type: 'parent', personId: family.husband });
-          }
-        });
+          if (child && family.husband) addRelationshipIfNotExists(child, { type: 'parent', personId: family.husband });
+        }
       }
     }
-    
+
     if (family.wife) {
       const wife = personMap.get(family.wife);
       if (wife) {
-        family.children.forEach(childId => {
+        for (const childId of family.children) {
           addRelationshipIfNotExists(wife, { type: 'child', personId: childId });
           const child = personMap.get(childId);
-          if (child && family.wife) {
-            addRelationshipIfNotExists(child, { type: 'parent', personId: family.wife });
-          }
-        });
-      }
-    }
-  }
-  
-  // Handle FAMILY_SPOUSE and FAMILY_CHILD connections via family records
-  // For each family, link all spouses together and link children to parents
-  for (const [familyId, family] of families.entries()) {
-    // Get all people who are spouses in this family
-    const spousesInFamily: string[] = [];
-    for (const [personId, familyIds] of personFamilySpouse.entries()) {
-      if (familyIds.includes(familyId)) {
-        spousesInFamily.push(personId);
-      }
-    }
-    
-    // Link all spouses together
-    for (let i = 0; i < spousesInFamily.length; i++) {
-      for (let j = i + 1; j < spousesInFamily.length; j++) {
-        const spouse1 = personMap.get(spousesInFamily[i]);
-        const spouse2 = personMap.get(spousesInFamily[j]);
-        if (spouse1 && spouse2) {
-          addRelationshipIfNotExists(spouse1, { type: 'spouse', personId: spousesInFamily[j] });
-          addRelationshipIfNotExists(spouse2, { type: 'spouse', personId: spousesInFamily[i] });
+          if (child && family.wife) addRelationshipIfNotExists(child, { type: 'parent', personId: family.wife });
         }
       }
     }
-    
-    // Also use the FAMILY record's HUSBAND/WIFE if available
+  }
+
+  // Resolve FAMS/FAMC links
+  for (const [familyId, family] of families.entries()) {
+    const spousesInFamily: string[] = [];
+    for (const [personId, familyIds] of personFamilySpouse.entries()) {
+      if (familyIds.includes(familyId)) spousesInFamily.push(personId);
+    }
+
+    for (let i = 0; i < spousesInFamily.length; i++) {
+      for (let j = i + 1; j < spousesInFamily.length; j++) {
+        const s1 = personMap.get(spousesInFamily[i]);
+        const s2 = personMap.get(spousesInFamily[j]);
+        if (s1 && s2) {
+          addRelationshipIfNotExists(s1, { type: 'spouse', personId: spousesInFamily[j] });
+          addRelationshipIfNotExists(s2, { type: 'spouse', personId: spousesInFamily[i] });
+        }
+      }
+    }
+
     if (family.husband && family.wife) {
       const husband = personMap.get(family.husband);
       const wife = personMap.get(family.wife);
@@ -188,454 +159,172 @@ export function parseGedcom(content: string): FamilyTree {
         addRelationshipIfNotExists(wife, { type: 'spouse', personId: family.husband });
       }
     }
-    
-    // Get all people who are children in this family
-    const childrenInFamily: string[] = [];
+
+    const childrenInFamily: string[] = [...family.children];
     for (const [personId, familyIds] of personFamilyChild.entries()) {
-      if (familyIds.includes(familyId)) {
+      if (familyIds.includes(familyId) && !childrenInFamily.includes(personId)) {
         childrenInFamily.push(personId);
       }
     }
-    
-    // Also get children from the FAMILY record
-    if (family.children) {
-      family.children.forEach(childId => {
-        if (!childrenInFamily.includes(childId)) {
-          childrenInFamily.push(childId);
-        }
-      });
-    }
-    
-    // Link children to all spouses in the family
+
     for (const childId of childrenInFamily) {
       const child = personMap.get(childId);
       if (!child) continue;
-      
-      // Link to spouses from FAMILY_SPOUSE
+
       for (const spouseId of spousesInFamily) {
         addRelationshipIfNotExists(child, { type: 'parent', personId: spouseId });
         const spouse = personMap.get(spouseId);
-        if (spouse) {
-          addRelationshipIfNotExists(spouse, { type: 'child', personId: childId });
-        }
+        if (spouse) addRelationshipIfNotExists(spouse, { type: 'child', personId: childId });
       }
-      
-      // Also link to HUSBAND/WIFE from FAMILY record
+
       if (family.husband) {
         addRelationshipIfNotExists(child, { type: 'parent', personId: family.husband });
         const husband = personMap.get(family.husband);
-        if (husband) {
-          addRelationshipIfNotExists(husband, { type: 'child', personId: childId });
-        }
+        if (husband) addRelationshipIfNotExists(husband, { type: 'child', personId: childId });
       }
       if (family.wife) {
         addRelationshipIfNotExists(child, { type: 'parent', personId: family.wife });
         const wife = personMap.get(family.wife);
-        if (wife) {
-          addRelationshipIfNotExists(wife, { type: 'child', personId: childId });
-        }
+        if (wife) addRelationshipIfNotExists(wife, { type: 'child', personId: childId });
       }
     }
   }
-  
-  return {
-    rootPersonId: findRootPersonId(persons),
-    persons
-  };
+
+  return { rootPersonId: findRootPersonId(persons), persons };
 }
 
 function parseLine(line: string): GedcomLine | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
-  
+
   const match = trimmed.match(/^(\d+)\s+(@(\w+)@\s+)?(\w+)(\s+(.+))?$/);
   if (!match) return null;
-  
-  const level = parseInt(match[1], 10);
-  const xref = match[3];
-  const tag = match[4];
-  const value = match[6];
-  
-  return {
-    level,
-    tag,
-    value: value || undefined,
-    xref: xref || undefined
-  };
-}
 
-function buildRecordTree(lines: GedcomLine[]): GedcomRecord[] {
-  const records: GedcomRecord[] = [];
-  const stack: GedcomRecord[] = [];
-  
-  for (const line of lines) {
-    if (line.level === 0) {
-      const record: GedcomRecord = {
-        type: line.tag,
-        xref: line.xref,
-        lines: [line],
-        children: []
-      };
-      records.push(record);
-      stack.length = 0;
-      stack.push(record);
-    } else {
-      while (stack.length > line.level) {
-        stack.pop();
-      }
-      
-      if (stack.length > 0) {
-        const current = stack[stack.length - 1];
-        if (line.level === current.lines[current.lines.length - 1].level + 1) {
-          current.lines.push(line);
-        } else {
-          const childRecord: GedcomRecord = {
-            type: line.tag,
-            lines: [line],
-            children: []
-          };
-          current.children.push(childRecord);
-          stack.push(childRecord);
-        }
-      }
-    }
-  }
-  
-  return records;
+  return {
+    level: parseInt(match[1], 10),
+    tag: match[4],
+    value: match[6] || undefined,
+    xref: match[3] || undefined,
+  };
 }
 
 function parseIndividual(record: GedcomRecord, noteMap: Map<string, string> = new Map()): Person | null {
   if (!record.xref) return null;
-  
-  const person: Person = {
-    id: record.xref,
-    name: '',
-    relationships: [],
-    events: []
-  };
-  
-  // Parse name - handle both standard NAME and structured names (GIVN, SURN)
-  let givenName = '';
-  let surname = '';
-  let fullName = '';
-  
-  for (const line of record.lines) {
-    if (line.tag === 'NAME') {
-      fullName = line.value || '';
-      // Remove slashes from GEDCOM name format (e.g., "John /Doe/" becomes "John Doe")
-      fullName = fullName.replace(/\//g, '').trim();
-    } else if (line.tag === 'SEX' || line.tag === 'GENDER') {
-      const genderValue = (line.value || '').toUpperCase();
-      person.gender = (genderValue === 'M' ? 'M' : genderValue === 'F' ? 'F' : 'U') as Gender;
+
+  const person: Person = { id: record.xref, name: '', relationships: [], events: [] };
+
+  // Name
+  const nameRecord = record.children.find(c => c.type === 'NAME');
+  if (nameRecord) {
+    let fullName = (nameRecord.lines[0]?.value || '').replace(/\//g, '').trim();
+    const givenRecord = nameRecord.children.find(c => c.type === 'GIVN');
+    const surnRecord = nameRecord.children.find(c => c.type === 'SURN');
+    if (givenRecord || surnRecord) {
+      const given = givenRecord?.lines[0]?.value || '';
+      const surn = surnRecord?.lines[0]?.value || '';
+      person.name = [given, surn].filter(Boolean).join(' ').trim();
+    } else {
+      person.name = fullName || 'Unknown';
     }
-  }
-  
-  // Look for structured name components in child records
-  for (const childRecord of record.children) {
-    if (childRecord.lines.some(l => l.tag === 'GIVN')) {
-      givenName = childRecord.lines.find(l => l.tag === 'GIVN')?.value || '';
-    }
-    if (childRecord.lines.some(l => l.tag === 'SURN')) {
-      surname = childRecord.lines.find(l => l.tag === 'SURN')?.value || '';
-    }
-    // Also check for SEX/GENDER in child records
-    if (childRecord.lines.some(l => l.tag === 'SEX' || l.tag === 'GENDER')) {
-      const sexLine = childRecord.lines.find(l => l.tag === 'SEX' || l.tag === 'GENDER');
-      if (sexLine) {
-        const genderValue = (sexLine.value || '').toUpperCase();
-        person.gender = (genderValue === 'M' ? 'M' : genderValue === 'F' ? 'F' : 'U') as Gender;
-      }
-    }
-  }
-  
-  // Also check direct lines for GIVN and SURN
-  for (const line of record.lines) {
-    if (line.tag === 'GIVN') {
-      givenName = line.value || '';
-    } else if (line.tag === 'SURN') {
-      surname = line.value || '';
-    }
-  }
-  
-  // Construct name: prefer structured name, fall back to full name
-  if (givenName || surname) {
-    person.name = [givenName, surname].filter(Boolean).join(' ').trim();
   } else {
-    person.name = fullName || 'Unknown';
+    person.name = 'Unknown';
   }
-  
-  // Helper function to recursively find DATE value in nested structure
-  function findDateValue(record: GedcomRecord): string | undefined {
-    // Check all DATE lines in direct lines (there might be multiple, find the one with a value)
-    for (const line of record.lines) {
-      if (line.tag === 'DATE' && line.value) {
-        return line.value;
-      }
-    }
-    // Check nested children recursively (search all children, not just those with DATE tag)
-    for (const child of record.children) {
-      const value = findDateValue(child);
-      if (value) {
-        return value;
-      }
+
+  // Gender
+  const sexRecord = record.children.find(c => c.type === 'SEX' || c.type === 'GENDER');
+  if (sexRecord) {
+    const val = (sexRecord.lines[0]?.value || '').toUpperCase();
+    person.gender = (val === 'M' ? 'M' : val === 'F' ? 'F' : 'U') as Gender;
+  }
+
+  // Recursively finds the first DATE value in a record tree (handles nested DATE structures)
+  function findDateValue(r: GedcomRecord): string | undefined {
+    if (r.lines[0]?.tag === 'DATE' && r.lines[0]?.value) return r.lines[0].value;
+    for (const child of r.children) {
+      const found = findDateValue(child);
+      if (found) return found;
     }
     return undefined;
   }
-  
-  // Parse dates - look for BIRT/BIRTH and DEAT/DEATH events
+
+  // Birth
+  const birtRecord = record.children.find(c => c.type === 'BIRT' || c.type === 'BIRTH');
+  if (birtRecord) {
+    const dateRecord = birtRecord.children.find(c => c.type === 'DATE');
+    if (dateRecord) person.birthDate = findDateValue(dateRecord);
+    const placeRecord = birtRecord.children.find(c => c.type === 'PLACE');
+    if (placeRecord) person.birthPlace = placeRecord.lines[0]?.value;
+    const sourRecord = birtRecord.children.find(c => c.type === 'SOURCE' || c.type === 'SOUR');
+    if (sourRecord) person.birthSource = sourRecord.lines[0]?.value;
+  }
+
+  // Non-standard direct birth/death date tags
+  const birthDateRecord = record.children.find(c => c.type === 'BIRTH_DATE' || c.type === 'BIRTHDATE');
+  if (birthDateRecord) person.birthDate = birthDateRecord.lines[0]?.value;
+  const deathDateRecord = record.children.find(c => c.type === 'DEATH_DATE' || c.type === 'DEATHDATE');
+  if (deathDateRecord) person.deathDate = deathDateRecord.lines[0]?.value;
+
+  // Death
+  const deatRecord = record.children.find(c => c.type === 'DEAT' || c.type === 'DEATH');
+  if (deatRecord) {
+    const dateRecord = deatRecord.children.find(c => c.type === 'DATE');
+    if (dateRecord) person.deathDate = findDateValue(dateRecord);
+    const placeRecord = deatRecord.children.find(c => c.type === 'PLACE');
+    if (placeRecord) person.deathPlace = placeRecord.lines[0]?.value;
+    const sourRecord = deatRecord.children.find(c => c.type === 'SOURCE' || c.type === 'SOUR');
+    if (sourRecord) person.deathSource = sourRecord.lines[0]?.value;
+  }
+
+  // Religion
+  const religionRecord = record.children.find(c => c.type === 'RELIGION');
+  if (religionRecord) {
+    const placeRecord = religionRecord.children.find(c => c.type === 'PLACE');
+    person.religion = placeRecord?.lines[0]?.value || religionRecord.lines[0]?.value;
+  }
+
+  // Occupation
+  const occupRecord = record.children.find(c => c.type === 'OCCUPATION');
+  if (occupRecord) {
+    const placeRecord = occupRecord.children.find(c => c.type === 'PLACE');
+    person.occupation = placeRecord?.lines[0]?.value || occupRecord.lines[0]?.value;
+  }
+
+  // Events and custom tags
   for (const childRecord of record.children) {
-    if (childRecord.type === 'BIRT' || childRecord.type === 'BIRTH' || 
-        childRecord.lines.some(l => l.tag === 'BIRT' || l.tag === 'BIRTH')) {
-      // Birth event found, look for DATE and PLACE in nested children (handle nested DATE structures)
-      for (const dateRecord of childRecord.children) {
-        if (dateRecord.lines.some(l => l.tag === 'DATE') || dateRecord.type === 'DATE') {
-          // Use recursive function to find DATE value
-          const dateValue = findDateValue(dateRecord);
-          if (dateValue) {
-            person.birthDate = dateValue;
-          }
-        }
-        if (dateRecord.lines.some(l => l.tag === 'PLACE')) {
-          const placeValue = dateRecord.lines.find(l => l.tag === 'PLACE')?.value;
-          if (placeValue) {
-            person.birthPlace = placeValue;
-          }
-        }
-      }
-      // Also check direct lines in the BIRT/BIRTH record
-      const birthDateLine = childRecord.lines.find(l => l.tag === 'DATE');
-      if (birthDateLine?.value) {
-        person.birthDate = birthDateLine.value;
-      }
-      // Also recursively search all children for DATE
-      const recursiveDateValue = findDateValue(childRecord);
-      if (recursiveDateValue && !person.birthDate) {
-        person.birthDate = recursiveDateValue;
-      }
-      const birthPlaceLine = childRecord.lines.find(l => l.tag === 'PLACE');
-      if (birthPlaceLine?.value) {
-        person.birthPlace = birthPlaceLine.value;
-      }
-      // SOURCE lands in childRecord.children alongside PLACE
-      for (const sub of childRecord.children) {
-        const srcLine = sub.lines.find(l => l.tag === 'SOURCE' || l.tag === 'SOUR');
-        if (srcLine?.value) { person.birthSource = srcLine.value; break; }
-      }
-      if (!person.birthSource) {
-        const srcLine = childRecord.lines.find(l => l.tag === 'SOURCE' || l.tag === 'SOUR');
-        if (srcLine?.value) person.birthSource = srcLine.value;
-      }
-    } else if (childRecord.type === 'DEAT' || childRecord.type === 'DEATH' ||
-               childRecord.lines.some(l => l.tag === 'DEAT' || l.tag === 'DEATH')) {
-      // Death event found
-      for (const dateRecord of childRecord.children) {
-        if (dateRecord.lines.some(l => l.tag === 'DATE') || dateRecord.type === 'DATE') {
-          // Use recursive function to find DATE value
-          const dateValue = findDateValue(dateRecord);
-          if (dateValue) {
-            person.deathDate = dateValue;
-          }
-        }
-        if (dateRecord.lines.some(l => l.tag === 'PLACE')) {
-          const placeValue = dateRecord.lines.find(l => l.tag === 'PLACE')?.value;
-          if (placeValue) person.deathPlace = placeValue;
-        }
-      }
-      const deathDateLine = childRecord.lines.find(l => l.tag === 'DATE');
-      if (deathDateLine?.value) {
-        person.deathDate = deathDateLine.value;
-      }
-      // Also recursively search all children for DATE
-      const recursiveDateValue = findDateValue(childRecord);
-      if (recursiveDateValue && !person.deathDate) {
-        person.deathDate = recursiveDateValue;
-      }
-      const deathPlaceLine = childRecord.lines.find(l => l.tag === 'PLACE');
-      if (deathPlaceLine?.value) person.deathPlace = deathPlaceLine.value;
-      // SOURCE
-      for (const sub of childRecord.children) {
-        const srcLine = sub.lines.find(l => l.tag === 'SOURCE' || l.tag === 'SOUR');
-        if (srcLine?.value) { person.deathSource = srcLine.value; break; }
-      }
-      if (!person.deathSource) {
-        const srcLine = childRecord.lines.find(l => l.tag === 'SOURCE' || l.tag === 'SOUR');
-        if (srcLine?.value) person.deathSource = srcLine.value;
-      }
+    if (childRecord.type === 'EVEN' || childRecord.type === 'EVENT') {
+      const event: Event = { type: '' };
+      const typeRecord = childRecord.children.find(c => c.type === 'TYPE');
+      if (typeRecord) event.type = typeRecord.lines[0]?.value || '';
+      const dateRecord = childRecord.children.find(c => c.type === 'DATE');
+      if (dateRecord) event.date = dateRecord.lines[0]?.value;
+      const placeRecord = childRecord.children.find(c => c.type === 'PLACE');
+      if (placeRecord) event.place = placeRecord.lines[0]?.value;
+      const sourRecord = childRecord.children.find(c => c.type === 'SOURCE' || c.type === 'SOUR');
+      if (sourRecord) event.source = sourRecord.lines[0]?.value;
+      if (event.type) person.events!.push(event);
     }
-  }
-  
-  // Also check for direct DATE tags (non-standard but sometimes used)
-  for (const line of record.lines) {
-    if (line.tag === 'BIRTH_DATE' || line.tag === 'BIRTHDATE') {
-      person.birthDate = line.value;
-    } else if (line.tag === 'DEATH_DATE' || line.tag === 'DEATHDATE') {
-      person.deathDate = line.value;
+
+    if (childRecord.type?.startsWith('_') && childRecord.lines[0]?.value) {
+      person.events!.push({
+        type: childRecord.type.replace(/^_/, ''),
+        note: childRecord.lines[0].value,
+      });
     }
-  }
-  
-  // Parse RELIGION tag
-  // Format: 1 RELIGION\n2 PLACE <religion>
-  // Check if RELIGION appears as a direct line, then look for PLACE that follows
-  for (let i = 0; i < record.lines.length; i++) {
-    const line = record.lines[i];
-    if (line.tag === 'RELIGION') {
-      // Look for PLACE line that follows (at level 2)
-      for (let j = i + 1; j < record.lines.length; j++) {
-        const nextLine = record.lines[j];
-        if (nextLine.level <= line.level) {
-          // We've moved to the next tag at same or higher level, stop searching
-          break;
+
+    if (childRecord.type === 'NOTE') {
+      const noteVal = childRecord.lines[0]?.value || '';
+      const refMatch = noteVal.match(/^@(\w+)@$/);
+      if (refMatch) {
+        const noteText = noteMap.get(refMatch[1]);
+        if (noteText) {
+          if (!person.notes) person.notes = [];
+          person.notes.push(noteText);
         }
-        if (nextLine.tag === 'PLACE' && nextLine.level === line.level + 1) {
-          person.religion = nextLine.value || '';
-          break;
-        }
-      }
-      // If no PLACE found and RELIGION has a value, use it
-      if (!person.religion && line.value) {
-        person.religion = line.value;
-      }
-    }
-  }
-  // Also check child records for RELIGION
-  for (const childRecord of record.children) {
-    if (childRecord.type === 'RELIGION' || childRecord.lines.some(l => l.tag === 'RELIGION')) {
-      const placeLine = childRecord.lines.find(l => l.tag === 'PLACE');
-      if (placeLine?.value) {
-        person.religion = placeLine.value;
       } else {
-        for (const nested of childRecord.children) {
-          const nestedPlace = nested.lines.find(l => l.tag === 'PLACE');
-          if (nestedPlace?.value) { person.religion = nestedPlace.value; break; }
-        }
-        if (!person.religion) {
-          const religionLine = childRecord.lines.find(l => l.tag === 'RELIGION');
-          if (religionLine?.value) person.religion = religionLine.value;
-        }
-      }
-    }
-  }
-  
-  // Parse OCCUPATION tag
-  // Format: 1 OCCUPATION\n2 PLACE <occupation>
-  // Check if OCCUPATION appears as a direct line, then look for PLACE that follows
-  for (let i = 0; i < record.lines.length; i++) {
-    const line = record.lines[i];
-    if (line.tag === 'OCCUPATION') {
-      // Look for PLACE line that follows (at level 2)
-      for (let j = i + 1; j < record.lines.length; j++) {
-        const nextLine = record.lines[j];
-        if (nextLine.level <= line.level) {
-          // We've moved to the next tag at same or higher level, stop searching
-          break;
-        }
-        if (nextLine.tag === 'PLACE' && nextLine.level === line.level + 1) {
-          person.occupation = nextLine.value || '';
-          break;
-        }
-      }
-      // If no PLACE found and OCCUPATION has a value, use it
-      if (!person.occupation && line.value) {
-        person.occupation = line.value;
-      }
-    }
-  }
-  // Also check child records for OCCUPATION
-  for (const childRecord of record.children) {
-    if (childRecord.type === 'OCCUPATION' || childRecord.lines.some(l => l.tag === 'OCCUPATION')) {
-      const placeLine = childRecord.lines.find(l => l.tag === 'PLACE');
-      if (placeLine?.value) {
-        person.occupation = placeLine.value;
-      } else {
-        // PLACE may be a grandchild when DATE precedes it at the same level
-        for (const nested of childRecord.children) {
-          const nestedPlace = nested.lines.find(l => l.tag === 'PLACE');
-          if (nestedPlace?.value) { person.occupation = nestedPlace.value; break; }
-        }
-        if (!person.occupation) {
-          const occupationLine = childRecord.lines.find(l => l.tag === 'OCCUPATION');
-          if (occupationLine?.value) person.occupation = occupationLine.value;
-        }
-      }
-    }
-  }
-  
-  // Parse EVENT records (GEDCOM uses EVEN, not EVENT)
-  for (const childRecord of record.children) {
-    // Check if this child record is an EVENT (type is EVENT/EVEN or has EVENT/EVEN tag in lines)
-    if (childRecord.type === 'EVENT' || childRecord.type === 'EVEN' || 
-        childRecord.lines.some(l => l.tag === 'EVENT' || l.tag === 'EVEN')) {
-      const event: Event = {
-        type: '',
-        date: undefined,
-        place: undefined
-      };
-      
-      // Parse TYPE, DATE, PLACE, and SOURCE from the EVENT record lines
-      for (const eventLine of childRecord.lines) {
-        if (eventLine.tag === 'TYPE') {
-          event.type = eventLine.value || '';
-        } else if (eventLine.tag === 'DATE') {
-          event.date = eventLine.value;
-        } else if (eventLine.tag === 'PLACE') {
-          event.place = eventLine.value;
-        } else if (eventLine.tag === 'SOURCE' || eventLine.tag === 'SOUR') {
-          event.source = eventLine.value;
-        }
-      }
-
-      // Also check nested children for DATE, PLACE, and SOURCE
-      for (const nestedRecord of childRecord.children) {
-        for (const nestedLine of nestedRecord.lines) {
-          if (nestedLine.tag === 'DATE') {
-            event.date = nestedLine.value;
-          } else if (nestedLine.tag === 'PLACE') {
-            event.place = nestedLine.value;
-          } else if (nestedLine.tag === 'SOURCE' || nestedLine.tag === 'SOUR') {
-            event.source = nestedLine.value;
-          }
-        }
-      }
-      
-      // Only add event if it has a type
-      if (event.type) {
-        if (!person.events) {
-          person.events = [];
-        }
-        person.events.push(event);
-      }
-    }
-
-    // Parse underscore-prefixed custom tags (e.g. _MEDICAL) as events
-    if (childRecord.type?.startsWith('_')) {
-      const tagLine = childRecord.lines[0];
-      if (tagLine?.value) {
-        if (!person.events) person.events = [];
-        person.events.push({
-          type: childRecord.type.replace(/^_/, ''),
-          note: tagLine.value
-        });
-      }
-    }
-
-    // Parse NOTE references and inline notes
-    if (childRecord.type === 'NOTE' || childRecord.lines.some(l => l.tag === 'NOTE')) {
-      const noteLine = childRecord.lines.find(l => l.tag === 'NOTE') ?? childRecord.lines[0];
-      if (noteLine?.value) {
-        const refMatch = noteLine.value.match(/^@(\w+)@$/);
-        if (refMatch) {
-          const noteText = noteMap.get(refMatch[1]);
-          if (noteText) {
-            if (!person.notes) person.notes = [];
-            person.notes.push(noteText);
-          }
-        } else {
-          // Inline note — assemble CONC/CONT sub-records from this child record
-          const inlineText = assembleNoteText(childRecord);
-          if (inlineText) {
-            if (!person.notes) person.notes = [];
-            person.notes.push(inlineText);
-          }
+        const inlineText = assembleNoteText(childRecord);
+        if (inlineText) {
+          if (!person.notes) person.notes = [];
+          person.notes.push(inlineText);
         }
       }
     }
@@ -645,84 +334,21 @@ function parseIndividual(record: GedcomRecord, noteMap: Map<string, string> = ne
 }
 
 function parseFamily(record: GedcomRecord): { husband?: string; wife?: string; children: string[] } | null {
-  const family: { husband?: string; wife?: string; children: string[] } = {
-    children: []
-  };
-  
-  // Check direct lines (support both HUSB and HUSBAND tags)
-  for (const line of record.lines) {
-    if ((line.tag === 'HUSB' || line.tag === 'HUSBAND') && line.value) {
-      family.husband = line.value.replace(/@/g, '');
-    } else if (line.tag === 'WIFE' && line.value) {
-      family.wife = line.value.replace(/@/g, '');
-    } else if (line.tag === 'CHIL' && line.value) {
-      family.children.push(line.value.replace(/@/g, ''));
-    }
+  const family: { husband?: string; wife?: string; children: string[] } = { children: [] };
+
+  for (const child of record.children) {
+    const val = child.lines[0]?.value?.replace(/@/g, '');
+    if (!val) continue;
+    if (child.type === 'HUSB' || child.type === 'HUSBAND') family.husband = val;
+    else if (child.type === 'WIFE') family.wife = val;
+    else if (child.type === 'CHIL') family.children.push(val);
   }
-  
-  // Also check child records (in case HUSB/WIFE/CHIL are nested)
-  for (const childRecord of record.children) {
-    for (const line of childRecord.lines) {
-      if ((line.tag === 'HUSB' || line.tag === 'HUSBAND') && line.value) {
-        family.husband = line.value.replace(/@/g, '');
-      } else if (line.tag === 'WIFE' && line.value) {
-        family.wife = line.value.replace(/@/g, '');
-      } else if (line.tag === 'CHIL' && line.value) {
-        family.children.push(line.value.replace(/@/g, ''));
-      }
-    }
-  }
-  
+
   return family;
 }
 
-// Helper function to find relationship ID from a record
-function findRelationshipId(record: GedcomRecord): string | null {
-  // First check if there's a value in the record lines
-  for (const line of record.lines) {
-    if (line.value) {
-      // Check if it looks like an ID (contains @ or is a reference)
-      const id = line.value.replace(/@/g, '').trim();
-      if (id) {
-        return id;
-      }
-    }
-    // Also check xref
-    if (line.xref) {
-      return line.xref;
-    }
-  }
-  
-  // Check child records
-  for (const child of record.children) {
-    for (const line of child.lines) {
-      if (line.value) {
-        const id = line.value.replace(/@/g, '').trim();
-        if (id) {
-          return id;
-        }
-      }
-      if (line.xref) {
-        return line.xref;
-      }
-    }
-  }
-  
-  // Check if the record itself has an xref
-  if (record.xref) {
-    return record.xref;
-  }
-  
-  return null;
-}
-
-// Helper function to add relationship if it doesn't already exist
 function addRelationshipIfNotExists(person: Person, relationship: { type: 'parent' | 'child' | 'spouse'; personId: string }) {
-  const exists = person.relationships.some(
-    rel => rel.type === relationship.type && rel.personId === relationship.personId
-  );
-  if (!exists) {
+  if (!person.relationships.some(r => r.type === relationship.type && r.personId === relationship.personId)) {
     person.relationships.push(relationship);
   }
 }
-
