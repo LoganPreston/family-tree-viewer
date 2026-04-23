@@ -43,12 +43,19 @@
         >
           Export JSON
         </button>
-        <button 
-          v-if="hasData" 
-          @click="showSearch = true" 
+        <button
+          v-if="hasData"
+          @click="showSearch = true"
           class="search-btn"
         >
           Search
+        </button>
+        <button
+          v-if="hasData"
+          @click="showStats = true"
+          class="stats-btn"
+        >
+          Stats
         </button>
         <button 
           v-if="hasData" 
@@ -97,7 +104,9 @@
       </div>
     </main>
     
-    <PersonEditor 
+    <StatsPanel v-if="showStats" @close="showStats = false" />
+
+    <PersonEditor
       v-if="showAddPerson"
       :is-open="showAddPerson"
       :person-id="null"
@@ -361,6 +370,7 @@ import { useFamilyTreeStore } from './stores/family-tree-store';
 import FileUpload from './components/FileUpload.vue';
 import TreeViewer from './components/TreeViewer.vue';
 import PersonEditor from './components/PersonEditor.vue';
+import StatsPanel from './components/StatsPanel.vue';
 import { downloadJson } from './utils/json-exporter';
 import { findShortestPath, findBloodRelatives, findAncestors, findDescendants } from './utils/path-finder';
 import { extractYearFromBirthdate } from './utils/date-utils';
@@ -370,6 +380,7 @@ const treeViewerRef = ref<InstanceType<typeof TreeViewer> | null>(null);
 const showAddPerson = ref(false);
 const showUpload = ref(false);
 const showSearch = ref(false);
+const showStats = ref(false);
 const searchQuery = ref('');
 const searchBornAfter = ref('');
 const searchBornBefore = ref('');
@@ -740,6 +751,21 @@ body {
 
 .connection-btn:hover {
   background: #0097a7;
+}
+
+.stats-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  background: #ff9800;
+  color: white;
+}
+
+.stats-btn:hover {
+  background: #f57c00;
 }
 
 .clear-highlight-btn {
