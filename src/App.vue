@@ -232,7 +232,7 @@
             </div>
           </div>
           <div class="search-results">
-            <div v-if="searchResults.length === 0 && searchQuery.trim()" class="no-results">
+            <div v-if="searchResults.length === 0 && hasActiveFilters" class="no-results">
               No results found
             </div>
             <div
@@ -391,6 +391,16 @@ const connectionPathResult = ref<string[] | null | undefined>(undefined);
 const hasSearched = ref(false);
 
 const hasData = computed(() => store.familyTree.persons.length > 0);
+
+const hasActiveFilters = computed(() =>
+  !!searchQuery.value.trim() ||
+  !!searchBornAfter.value || !!searchBornBefore.value ||
+  !!searchDiedAfter.value || !!searchDiedBefore.value ||
+  !!searchBirthPlace.value.trim() ||
+  !!searchRelatedToId.value ||
+  !!searchAncestorOfId.value ||
+  !!searchDescendantOfId.value
+);
 
 const bloodRelativeSet = computed(() =>
   searchRelatedToId.value
