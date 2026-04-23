@@ -4,24 +4,13 @@ import type { Ref } from 'vue';
 import { buildTreeData } from '../utils/tree-layout';
 import type { TreeNode } from '../utils/tree-layout';
 import type { useFamilyTreeStore } from '../stores/family-tree-store';
+import { extractYearFromBirthdate } from '../utils/date-utils';
 
 const NODE_WIDTH = 180;
 const NODE_HEIGHT = 120;
 const NODE_SPACING = 20;
 const LEVEL_SPACING = 100;
 const COUPLE_DROP = 28; // px below node bottom for U-shaped spouse connector
-
-function extractYearFromBirthdate(birthDate?: string): number | null {
-  if (!birthDate) return null;
-  const yearMatch = birthDate.match(/\b(19|20)\d{2}\b/);
-  if (yearMatch) return parseInt(yearMatch[0], 10);
-  const anyYearMatch = birthDate.match(/\b\d{4}\b/);
-  if (anyYearMatch) {
-    const year = parseInt(anyYearMatch[0], 10);
-    if (year >= 1000 && year <= 2100) return year;
-  }
-  return null;
-}
 
 function wrapText(text: string, maxWidth: number, fontSize = '11px', fontWeight = 'normal'): string[] {
   const size = parseFloat(fontSize) || 11;

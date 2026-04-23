@@ -130,6 +130,16 @@
             class="search-input"
             autofocus
           />
+          <div class="year-filters">
+            <div class="year-filter">
+              <label>Born after</label>
+              <input v-model="searchBornAfter" type="number" placeholder="e.g. 1900" class="year-input" min="1000" max="2100" />
+            </div>
+            <div class="year-filter">
+              <label>Born before</label>
+              <input v-model="searchBornBefore" type="number" placeholder="e.g. 1950" class="year-input" min="1000" max="2100" />
+            </div>
+          </div>
           <div class="search-results">
             <div v-if="searchResults.length === 0 && searchQuery.trim()" class="no-results">
               No results found
@@ -262,6 +272,7 @@ import TreeViewer from './components/TreeViewer.vue';
 import PersonEditor from './components/PersonEditor.vue';
 import { downloadJson } from './utils/json-exporter';
 import { findShortestPath } from './utils/path-finder';
+import { extractYearFromBirthdate } from './utils/date-utils';
 
 const store = useFamilyTreeStore();
 const treeViewerRef = ref<InstanceType<typeof TreeViewer> | null>(null);
@@ -269,6 +280,8 @@ const showAddPerson = ref(false);
 const showUpload = ref(false);
 const showSearch = ref(false);
 const searchQuery = ref('');
+const searchBornAfter = ref('');
+const searchBornBefore = ref('');
 const showConnectionModal = ref(false);
 const connectionPerson1Query = ref('');
 const connectionPerson2Query = ref('');
@@ -280,16 +293,24 @@ const hasSearched = ref(false);
 const hasData = computed(() => store.familyTree.persons.length > 0);
 
 const searchResults = computed(() => {
-  if (!searchQuery.value.trim()) {
-    return [];
-  }
-  
   const query = searchQuery.value.toLowerCase().trim();
-  const results = store.familyTree.persons.filter(person =>
-    person.name.toLowerCase().includes(query)
-  );
-  
-  // Limit to 20 results
+  const bornAfter = searchBornAfter.value ? parseInt(searchBornAfter.value) : null;
+  const bornBefore = searchBornBefore.value ? parseInt(searchBornBefore.value) : null;
+
+  const hasFilters = query || bornAfter !== null || bornBefore !== null;
+  if (!hasFilters) return [];
+
+  const results = store.familyTree.persons.filter(person => {
+    if (query && !person.name.toLowerCase().includes(query)) return false;
+    if (bornAfter !== null || bornBefore !== null) {
+      const year = extractYearFromBirthdate(person.birthDate);
+      if (year === null) return false;
+      if (bornAfter !== null && year < bornAfter) return false;
+      if (bornBefore !== null && year > bornBefore) return false;
+    }
+    return true;
+  });
+
   return results.slice(0, 20);
 });
 
@@ -314,6 +335,8 @@ function handleSearchSelect(personId: string) {
 function handleSearchClose() {
   showSearch.value = false;
   searchQuery.value = '';
+  searchBornAfter.value = '';
+  searchBornBefore.value = '';
 }
 
 const connectionPerson1Results = computed(() => {
@@ -702,6 +725,39 @@ body {
 }
 
 .search-input:focus {
+  outline: none;
+  border-color: #9c27b0;
+}
+
+.year-filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.year-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.year-filter label {
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+.year-input {
+  padding: 8px 12px;
+  border: 2px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.year-input:focus {
   outline: none;
   border-color: #9c27b0;
 }
