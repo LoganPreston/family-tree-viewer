@@ -416,6 +416,15 @@ function parseIndividual(record: GedcomRecord, noteMap: Map<string, string> = ne
       if (birthPlaceLine?.value) {
         person.birthPlace = birthPlaceLine.value;
       }
+      // SOURCE lands in childRecord.children alongside PLACE
+      for (const sub of childRecord.children) {
+        const srcLine = sub.lines.find(l => l.tag === 'SOURCE' || l.tag === 'SOUR');
+        if (srcLine?.value) { person.birthSource = srcLine.value; break; }
+      }
+      if (!person.birthSource) {
+        const srcLine = childRecord.lines.find(l => l.tag === 'SOURCE' || l.tag === 'SOUR');
+        if (srcLine?.value) person.birthSource = srcLine.value;
+      }
     } else if (childRecord.type === 'DEAT' || childRecord.type === 'DEATH' ||
                childRecord.lines.some(l => l.tag === 'DEAT' || l.tag === 'DEATH')) {
       // Death event found
@@ -427,6 +436,10 @@ function parseIndividual(record: GedcomRecord, noteMap: Map<string, string> = ne
             person.deathDate = dateValue;
           }
         }
+        if (dateRecord.lines.some(l => l.tag === 'PLACE')) {
+          const placeValue = dateRecord.lines.find(l => l.tag === 'PLACE')?.value;
+          if (placeValue) person.deathPlace = placeValue;
+        }
       }
       const deathDateLine = childRecord.lines.find(l => l.tag === 'DATE');
       if (deathDateLine?.value) {
@@ -436,6 +449,17 @@ function parseIndividual(record: GedcomRecord, noteMap: Map<string, string> = ne
       const recursiveDateValue = findDateValue(childRecord);
       if (recursiveDateValue && !person.deathDate) {
         person.deathDate = recursiveDateValue;
+      }
+      const deathPlaceLine = childRecord.lines.find(l => l.tag === 'PLACE');
+      if (deathPlaceLine?.value) person.deathPlace = deathPlaceLine.value;
+      // SOURCE
+      for (const sub of childRecord.children) {
+        const srcLine = sub.lines.find(l => l.tag === 'SOURCE' || l.tag === 'SOUR');
+        if (srcLine?.value) { person.deathSource = srcLine.value; break; }
+      }
+      if (!person.deathSource) {
+        const srcLine = childRecord.lines.find(l => l.tag === 'SOURCE' || l.tag === 'SOUR');
+        if (srcLine?.value) person.deathSource = srcLine.value;
       }
     }
   }
@@ -547,7 +571,7 @@ function parseIndividual(record: GedcomRecord, noteMap: Map<string, string> = ne
         place: undefined
       };
       
-      // Parse TYPE, DATE, and PLACE from the EVENT record lines
+      // Parse TYPE, DATE, PLACE, and SOURCE from the EVENT record lines
       for (const eventLine of childRecord.lines) {
         if (eventLine.tag === 'TYPE') {
           event.type = eventLine.value || '';
@@ -555,16 +579,20 @@ function parseIndividual(record: GedcomRecord, noteMap: Map<string, string> = ne
           event.date = eventLine.value;
         } else if (eventLine.tag === 'PLACE') {
           event.place = eventLine.value;
+        } else if (eventLine.tag === 'SOURCE' || eventLine.tag === 'SOUR') {
+          event.source = eventLine.value;
         }
       }
-      
-      // Also check nested children for DATE and PLACE (in case they're at level 3)
+
+      // Also check nested children for DATE, PLACE, and SOURCE
       for (const nestedRecord of childRecord.children) {
         for (const nestedLine of nestedRecord.lines) {
           if (nestedLine.tag === 'DATE') {
             event.date = nestedLine.value;
           } else if (nestedLine.tag === 'PLACE') {
             event.place = nestedLine.value;
+          } else if (nestedLine.tag === 'SOURCE' || nestedLine.tag === 'SOUR') {
+            event.source = nestedLine.value;
           }
         }
       }

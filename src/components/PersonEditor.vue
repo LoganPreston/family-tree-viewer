@@ -27,6 +27,23 @@
           <label>Death Date</label>
           <input v-model="formData.deathDate" type="text" placeholder="e.g., 2020" />
         </div>
+
+        <div v-if="person && person.deathPlace" class="form-group">
+          <label>Death Place</label>
+          <div class="readonly-field">{{ person.deathPlace }}</div>
+        </div>
+
+        <div v-if="person && (person.birthSource || person.deathSource)" class="form-group">
+          <label>Sources</label>
+          <div class="sources-list">
+            <div v-if="person.birthSource" class="source-item">
+              <span class="source-label">Birth:</span> {{ person.birthSource }}
+            </div>
+            <div v-if="person.deathSource" class="source-item">
+              <span class="source-label">Death:</span> {{ person.deathSource }}
+            </div>
+          </div>
+        </div>
         
         <div class="form-group">
           <label>Gender</label>
@@ -55,6 +72,7 @@
               <span v-if="event.date" class="event-date">{{ event.date }}</span>
               <span v-if="event.place" class="event-place">{{ event.place }}</span>
               <span v-if="event.note" class="event-note">{{ event.note }}</span>
+              <span v-if="event.source" class="event-source">{{ event.source }}</span>
             </div>
           </div>
         </div>
@@ -433,6 +451,40 @@ function close() {
 .event-note {
   color: #555;
   flex-basis: 100%;
+}
+
+.event-source {
+  color: #999;
+  font-size: 11px;
+  font-style: italic;
+  flex-basis: 100%;
+}
+
+.readonly-field {
+  padding: 8px 12px;
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #333;
+}
+
+.sources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.source-item {
+  font-size: 13px;
+  color: #555;
+  font-style: italic;
+}
+
+.source-label {
+  font-weight: 600;
+  font-style: normal;
+  color: #333;
 }
 
 .relationships-list {
