@@ -125,6 +125,32 @@ export function findAncestors(familyTree: FamilyTree, personId: string): Set<str
 }
 
 /**
+ * Returns the set of all direct descendants of personId by following only
+ * 'child' edges. The seed person is not included in the result.
+ */
+export function findDescendants(familyTree: FamilyTree, personId: string): Set<string> {
+  const personMap = new Map<string, Person>();
+  for (const person of familyTree.persons) personMap.set(person.id, person);
+
+  const descendants = new Set<string>();
+  const queue = [personId];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const person = personMap.get(current);
+    if (!person) continue;
+    for (const rel of person.relationships) {
+      if (rel.type === 'child' && !descendants.has(rel.personId)) {
+        descendants.add(rel.personId);
+        queue.push(rel.personId);
+      }
+    }
+  }
+
+  return descendants;
+}
+
+/**
  * Returns true if potentialDescendantId is reachable from ancestorId
  * by following only 'child' relationship edges.
  */

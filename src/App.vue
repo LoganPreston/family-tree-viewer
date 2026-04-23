@@ -140,6 +140,16 @@
               <input v-model="searchBornBefore" type="number" placeholder="e.g. 1950" class="year-input" min="1000" max="2100" />
             </div>
           </div>
+          <div class="year-filters">
+            <div class="year-filter">
+              <label>Died after</label>
+              <input v-model="searchDiedAfter" type="number" placeholder="e.g. 1800" class="year-input" min="1000" max="2100" />
+            </div>
+            <div class="year-filter">
+              <label>Died before</label>
+              <input v-model="searchDiedBefore" type="number" placeholder="e.g. 1900" class="year-input" min="1000" max="2100" />
+            </div>
+          </div>
           <input
             v-model="searchBirthPlace"
             type="text"
@@ -193,6 +203,31 @@
                 :key="person.id"
                 class="related-to-option"
                 @click="searchAncestorOfId = person.id; searchAncestorOfQuery = person.name"
+              >{{ person.name }}<span v-if="person.birthDate" class="related-to-date"> b. {{ person.birthDate }}</span></div>
+            </div>
+          </div>
+          <div class="related-to-picker">
+            <label class="related-to-label">Descendant of</label>
+            <div class="related-to-input-wrap">
+              <input
+                v-model="searchDescendantOfQuery"
+                type="text"
+                placeholder="Type a name..."
+                class="search-input related-to-input"
+                @input="searchDescendantOfId = null"
+              />
+              <button
+                v-if="searchDescendantOfId"
+                class="related-to-clear"
+                @click="searchDescendantOfQuery = ''; searchDescendantOfId = null"
+              >&times;</button>
+            </div>
+            <div v-if="descendantOfSearchResults.length > 0" class="related-to-dropdown">
+              <div
+                v-for="person in descendantOfSearchResults"
+                :key="person.id"
+                class="related-to-option"
+                @click="searchDescendantOfId = person.id; searchDescendantOfQuery = person.name"
               >{{ person.name }}<span v-if="person.birthDate" class="related-to-date"> b. {{ person.birthDate }}</span></div>
             </div>
           </div>
@@ -327,7 +362,7 @@ import FileUpload from './components/FileUpload.vue';
 import TreeViewer from './components/TreeViewer.vue';
 import PersonEditor from './components/PersonEditor.vue';
 import { downloadJson } from './utils/json-exporter';
-import { findShortestPath, findBloodRelatives, findAncestors } from './utils/path-finder';
+import { findShortestPath, findBloodRelatives, findAncestors, findDescendants } from './utils/path-finder';
 import { extractYearFromBirthdate } from './utils/date-utils';
 
 const store = useFamilyTreeStore();
@@ -343,6 +378,10 @@ const searchRelatedToQuery = ref('');
 const searchRelatedToId = ref<string | null>(null);
 const searchAncestorOfQuery = ref('');
 const searchAncestorOfId = ref<string | null>(null);
+const searchDescendantOfQuery = ref('');
+const searchDescendantOfId = ref<string | null>(null);
+const searchDiedAfter = ref('');
+const searchDiedBefore = ref('');
 const showConnectionModal = ref(false);
 const connectionPerson1Query = ref('');
 const connectionPerson2Query = ref('');
@@ -365,6 +404,12 @@ const ancestorSet = computed(() =>
     : null
 );
 
+const descendantSet = computed(() =>
+  searchDescendantOfId.value
+    ? findDescendants(store.familyTree, searchDescendantOfId.value)
+    : null
+);
+
 const relatedToSearchResults = computed(() => {
   if (!searchRelatedToQuery.value.trim() || searchRelatedToId.value) return [];
   const q = searchRelatedToQuery.value.toLowerCase().trim();
@@ -381,13 +426,25 @@ const ancestorOfSearchResults = computed(() => {
     .slice(0, 10);
 });
 
+const descendantOfSearchResults = computed(() => {
+  if (!searchDescendantOfQuery.value.trim() || searchDescendantOfId.value) return [];
+  const q = searchDescendantOfQuery.value.toLowerCase().trim();
+  return store.familyTree.persons
+    .filter(p => p.name.toLowerCase().includes(q))
+    .slice(0, 10);
+});
+
 const searchResults = computed(() => {
   const query = searchQuery.value.toLowerCase().trim();
   const bornAfter = searchBornAfter.value ? parseInt(searchBornAfter.value) : null;
   const bornBefore = searchBornBefore.value ? parseInt(searchBornBefore.value) : null;
 
   const placeQuery = searchBirthPlace.value.toLowerCase().trim();
-  const hasFilters = query || bornAfter !== null || bornBefore !== null || placeQuery || searchRelatedToId.value || searchAncestorOfId.value;
+  const diedAfter = searchDiedAfter.value ? parseInt(searchDiedAfter.value) : null;
+  const diedBefore = searchDiedBefore.value ? parseInt(searchDiedBefore.value) : null;
+  const hasFilters = query || bornAfter !== null || bornBefore !== null || placeQuery
+    || searchRelatedToId.value || searchAncestorOfId.value || searchDescendantOfId.value
+    || diedAfter !== null || diedBefore !== null;
   if (!hasFilters) return [];
 
   const results = store.familyTree.persons.filter(person => {
@@ -395,11 +452,18 @@ const searchResults = computed(() => {
     if (placeQuery && !(person.birthPlace ?? '').toLowerCase().includes(placeQuery)) return false;
     if (bloodRelativeSet.value && !bloodRelativeSet.value.has(person.id)) return false;
     if (ancestorSet.value && !ancestorSet.value.has(person.id)) return false;
+    if (descendantSet.value && !descendantSet.value.has(person.id)) return false;
     if (bornAfter !== null || bornBefore !== null) {
       const year = extractYearFromBirthdate(person.birthDate);
       if (year === null) return false;
       if (bornAfter !== null && year < bornAfter) return false;
       if (bornBefore !== null && year > bornBefore) return false;
+    }
+    if (diedAfter !== null || diedBefore !== null) {
+      const year = extractYearFromBirthdate(person.deathDate);
+      if (year === null) return false;
+      if (diedAfter !== null && year < diedAfter) return false;
+      if (diedBefore !== null && year > diedBefore) return false;
     }
     return true;
   });
@@ -435,6 +499,10 @@ function handleSearchClose() {
   searchRelatedToId.value = null;
   searchAncestorOfQuery.value = '';
   searchAncestorOfId.value = null;
+  searchDescendantOfQuery.value = '';
+  searchDescendantOfId.value = null;
+  searchDiedAfter.value = '';
+  searchDiedBefore.value = '';
 }
 
 const connectionPerson1Results = computed(() => {
