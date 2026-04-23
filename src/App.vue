@@ -140,6 +140,12 @@
               <input v-model="searchBornBefore" type="number" placeholder="e.g. 1950" class="year-input" min="1000" max="2100" />
             </div>
           </div>
+          <input
+            v-model="searchBirthPlace"
+            type="text"
+            placeholder="Birth place contains... (e.g. England, Michigan)"
+            class="search-input"
+          />
           <div class="search-results">
             <div v-if="searchResults.length === 0 && searchQuery.trim()" class="no-results">
               No results found
@@ -282,6 +288,7 @@ const showSearch = ref(false);
 const searchQuery = ref('');
 const searchBornAfter = ref('');
 const searchBornBefore = ref('');
+const searchBirthPlace = ref('');
 const showConnectionModal = ref(false);
 const connectionPerson1Query = ref('');
 const connectionPerson2Query = ref('');
@@ -297,11 +304,13 @@ const searchResults = computed(() => {
   const bornAfter = searchBornAfter.value ? parseInt(searchBornAfter.value) : null;
   const bornBefore = searchBornBefore.value ? parseInt(searchBornBefore.value) : null;
 
-  const hasFilters = query || bornAfter !== null || bornBefore !== null;
+  const placeQuery = searchBirthPlace.value.toLowerCase().trim();
+  const hasFilters = query || bornAfter !== null || bornBefore !== null || placeQuery;
   if (!hasFilters) return [];
 
   const results = store.familyTree.persons.filter(person => {
     if (query && !person.name.toLowerCase().includes(query)) return false;
+    if (placeQuery && !(person.birthPlace ?? '').toLowerCase().includes(placeQuery)) return false;
     if (bornAfter !== null || bornBefore !== null) {
       const year = extractYearFromBirthdate(person.birthDate);
       if (year === null) return false;
@@ -337,6 +346,7 @@ function handleSearchClose() {
   searchQuery.value = '';
   searchBornAfter.value = '';
   searchBornBefore.value = '';
+  searchBirthPlace.value = '';
 }
 
 const connectionPerson1Results = computed(() => {
