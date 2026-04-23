@@ -146,6 +146,56 @@
             placeholder="Birth place contains... (e.g. England, Michigan)"
             class="search-input"
           />
+          <div class="related-to-picker">
+            <label class="related-to-label">Blood relative of</label>
+            <div class="related-to-input-wrap">
+              <input
+                v-model="searchRelatedToQuery"
+                type="text"
+                placeholder="Type a name..."
+                class="search-input related-to-input"
+                @input="searchRelatedToId = null"
+              />
+              <button
+                v-if="searchRelatedToId"
+                class="related-to-clear"
+                @click="searchRelatedToQuery = ''; searchRelatedToId = null"
+              >&times;</button>
+            </div>
+            <div v-if="relatedToSearchResults.length > 0" class="related-to-dropdown">
+              <div
+                v-for="person in relatedToSearchResults"
+                :key="person.id"
+                class="related-to-option"
+                @click="searchRelatedToId = person.id; searchRelatedToQuery = person.name"
+              >{{ person.name }}<span v-if="person.birthDate" class="related-to-date"> b. {{ person.birthDate }}</span></div>
+            </div>
+          </div>
+          <div class="related-to-picker">
+            <label class="related-to-label">Ancestor of</label>
+            <div class="related-to-input-wrap">
+              <input
+                v-model="searchAncestorOfQuery"
+                type="text"
+                placeholder="Type a name..."
+                class="search-input related-to-input"
+                @input="searchAncestorOfId = null"
+              />
+              <button
+                v-if="searchAncestorOfId"
+                class="related-to-clear"
+                @click="searchAncestorOfQuery = ''; searchAncestorOfId = null"
+              >&times;</button>
+            </div>
+            <div v-if="ancestorOfSearchResults.length > 0" class="related-to-dropdown">
+              <div
+                v-for="person in ancestorOfSearchResults"
+                :key="person.id"
+                class="related-to-option"
+                @click="searchAncestorOfId = person.id; searchAncestorOfQuery = person.name"
+              >{{ person.name }}<span v-if="person.birthDate" class="related-to-date"> b. {{ person.birthDate }}</span></div>
+            </div>
+          </div>
           <div class="search-results">
             <div v-if="searchResults.length === 0 && searchQuery.trim()" class="no-results">
               No results found
@@ -277,7 +327,7 @@ import FileUpload from './components/FileUpload.vue';
 import TreeViewer from './components/TreeViewer.vue';
 import PersonEditor from './components/PersonEditor.vue';
 import { downloadJson } from './utils/json-exporter';
-import { findShortestPath } from './utils/path-finder';
+import { findShortestPath, findBloodRelatives, findAncestors } from './utils/path-finder';
 import { extractYearFromBirthdate } from './utils/date-utils';
 
 const store = useFamilyTreeStore();
@@ -289,6 +339,10 @@ const searchQuery = ref('');
 const searchBornAfter = ref('');
 const searchBornBefore = ref('');
 const searchBirthPlace = ref('');
+const searchRelatedToQuery = ref('');
+const searchRelatedToId = ref<string | null>(null);
+const searchAncestorOfQuery = ref('');
+const searchAncestorOfId = ref<string | null>(null);
 const showConnectionModal = ref(false);
 const connectionPerson1Query = ref('');
 const connectionPerson2Query = ref('');
@@ -299,18 +353,48 @@ const hasSearched = ref(false);
 
 const hasData = computed(() => store.familyTree.persons.length > 0);
 
+const bloodRelativeSet = computed(() =>
+  searchRelatedToId.value
+    ? findBloodRelatives(store.familyTree, searchRelatedToId.value)
+    : null
+);
+
+const ancestorSet = computed(() =>
+  searchAncestorOfId.value
+    ? findAncestors(store.familyTree, searchAncestorOfId.value)
+    : null
+);
+
+const relatedToSearchResults = computed(() => {
+  if (!searchRelatedToQuery.value.trim() || searchRelatedToId.value) return [];
+  const q = searchRelatedToQuery.value.toLowerCase().trim();
+  return store.familyTree.persons
+    .filter(p => p.name.toLowerCase().includes(q))
+    .slice(0, 10);
+});
+
+const ancestorOfSearchResults = computed(() => {
+  if (!searchAncestorOfQuery.value.trim() || searchAncestorOfId.value) return [];
+  const q = searchAncestorOfQuery.value.toLowerCase().trim();
+  return store.familyTree.persons
+    .filter(p => p.name.toLowerCase().includes(q))
+    .slice(0, 10);
+});
+
 const searchResults = computed(() => {
   const query = searchQuery.value.toLowerCase().trim();
   const bornAfter = searchBornAfter.value ? parseInt(searchBornAfter.value) : null;
   const bornBefore = searchBornBefore.value ? parseInt(searchBornBefore.value) : null;
 
   const placeQuery = searchBirthPlace.value.toLowerCase().trim();
-  const hasFilters = query || bornAfter !== null || bornBefore !== null || placeQuery;
+  const hasFilters = query || bornAfter !== null || bornBefore !== null || placeQuery || searchRelatedToId.value || searchAncestorOfId.value;
   if (!hasFilters) return [];
 
   const results = store.familyTree.persons.filter(person => {
     if (query && !person.name.toLowerCase().includes(query)) return false;
     if (placeQuery && !(person.birthPlace ?? '').toLowerCase().includes(placeQuery)) return false;
+    if (bloodRelativeSet.value && !bloodRelativeSet.value.has(person.id)) return false;
+    if (ancestorSet.value && !ancestorSet.value.has(person.id)) return false;
     if (bornAfter !== null || bornBefore !== null) {
       const year = extractYearFromBirthdate(person.birthDate);
       if (year === null) return false;
@@ -347,6 +431,10 @@ function handleSearchClose() {
   searchBornAfter.value = '';
   searchBornBefore.value = '';
   searchBirthPlace.value = '';
+  searchRelatedToQuery.value = '';
+  searchRelatedToId.value = null;
+  searchAncestorOfQuery.value = '';
+  searchAncestorOfId.value = null;
 }
 
 const connectionPerson1Results = computed(() => {
@@ -770,6 +858,80 @@ body {
 .year-input:focus {
   outline: none;
   border-color: #9c27b0;
+}
+
+.related-to-picker {
+  position: relative;
+  margin-bottom: 16px;
+}
+
+.related-to-label {
+  display: block;
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.related-to-input-wrap {
+  position: relative;
+}
+
+.related-to-input {
+  margin-bottom: 0;
+}
+
+.related-to-clear {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: #999;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+
+.related-to-clear:hover {
+  color: #333;
+}
+
+.related-to-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  margin-top: 2px;
+}
+
+.related-to-option {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  border-bottom: 1px solid #eee;
+}
+
+.related-to-option:last-child {
+  border-bottom: none;
+}
+
+.related-to-option:hover {
+  background: #f5f5f5;
+}
+
+.related-to-date {
+  color: #999;
+  font-size: 12px;
 }
 
 .search-results {

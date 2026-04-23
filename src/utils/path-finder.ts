@@ -69,6 +69,62 @@ export function findShortestPath(
 }
 
 /**
+ * Returns the set of all people blood-related to personId (direct ancestors,
+ * descendants, and anyone sharing a common ancestor) by traversing only
+ * parent/child edges — spouse links are excluded. The seed person is not
+ * included in the result.
+ */
+export function findBloodRelatives(familyTree: FamilyTree, personId: string): Set<string> {
+  const personMap = new Map<string, Person>();
+  for (const person of familyTree.persons) personMap.set(person.id, person);
+
+  const reachable = new Set<string>();
+  const queue = [personId];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (reachable.has(current)) continue;
+    reachable.add(current);
+    const person = personMap.get(current);
+    if (!person) continue;
+    for (const rel of person.relationships) {
+      if ((rel.type === 'parent' || rel.type === 'child') && !reachable.has(rel.personId)) {
+        queue.push(rel.personId);
+      }
+    }
+  }
+
+  reachable.delete(personId);
+  return reachable;
+}
+
+/**
+ * Returns the set of all direct ancestors of personId by following only
+ * 'parent' edges. The seed person is not included in the result.
+ */
+export function findAncestors(familyTree: FamilyTree, personId: string): Set<string> {
+  const personMap = new Map<string, Person>();
+  for (const person of familyTree.persons) personMap.set(person.id, person);
+
+  const ancestors = new Set<string>();
+  const queue = [personId];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const person = personMap.get(current);
+    if (!person) continue;
+    for (const rel of person.relationships) {
+      if (rel.type === 'parent' && !ancestors.has(rel.personId)) {
+        ancestors.add(rel.personId);
+        queue.push(rel.personId);
+      }
+    }
+  }
+
+  return ancestors;
+}
+
+/**
  * Returns true if potentialDescendantId is reachable from ancestorId
  * by following only 'child' relationship edges.
  */
